@@ -1,15 +1,16 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
-import Sidebar            from '@/components/layout/Sidebar'
-import Dashboard          from '@/pages/dashboard/Dashboard'
-import Quotations         from '@/pages/quotations/Quotations'
-import Invoices           from '@/pages/invoices/Invoices'
-import Payments           from '@/pages/payments/Payments'
-import Income             from '@/pages/income/Income'
-import MasterData         from '@/pages/master/MasterData'
-import LoginPage          from '@/pages/auth/LoginPage'
-import UsersPage          from '@/pages/users/UsersPage'
-import CompanySettingsPage from '@/pages/CompanySettingsPage'
+import Sidebar              from '@/components/layout/Sidebar'
+import Dashboard            from '@/pages/dashboard/Dashboard'
+import Quotations           from '@/pages/quotations/Quotations'
+import Invoices             from '@/pages/invoices/Invoices'
+import Payments             from '@/pages/payments/Payments'
+import Income               from '@/pages/income/Income'
+import MasterData           from '@/pages/master/MasterData'
+import LoginPage            from '@/pages/auth/LoginPage'
+import UsersPage            from '@/pages/users/UsersPage'
+import CompanySettingsPage  from '@/pages/CompanySettingsPage'
+import Projects             from '@/pages/projects/Projects'
 
 function AppShell() {
   const { session, loading } = useAuth()
@@ -32,6 +33,7 @@ function AppShell() {
           <Route path="/invoices/*"   element={<Invoices />} />
           <Route path="/payments"     element={<Payments />} />
           <Route path="/income"       element={<Income />} />
+          <Route path="/projects/*"   element={<Projects />} />
           <Route path="/master/*"     element={<MasterData />} />
           <Route path="/users"        element={<UsersPage />} />
           <Route path="/companies"    element={<CompanySettingsPage />} />
