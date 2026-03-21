@@ -150,7 +150,7 @@ function taxLabel(type: 'ppn11' | 'ppn12') {
 
 // ─── PDF Component ───────────────────────────────────────────────────────────
 
-export function InvoicePDF({ data }: { data: InvoiceData }) {
+export default function InvoicePDF({ data }: { data: InvoiceData }) {
   const { company, tax_type, taxable_base, tax_amount } = data
   const hasTax = tax_type !== 'none' && tax_amount > 0
 
