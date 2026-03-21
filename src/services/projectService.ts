@@ -208,8 +208,8 @@ export async function getAvailableDealQuotations(companyId?: string | null) {
   let query = supabase
     .from('quotations')
     .select(`
-      id, qt_number, nominal, title, qt_date, company_id,
-      clients (name),
+      id, qt_number, nominal, title, qt_date, company_id, client_id,
+      clients (id, name),
       services (code)
     `)
     .eq('status', 'deal')
