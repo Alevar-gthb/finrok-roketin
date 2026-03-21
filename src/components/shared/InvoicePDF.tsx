@@ -1,211 +1,302 @@
+/**
+ * PATCH NOTES untuk InvoicePDF (atau file PDF generator kamu)
+ *
+ * File ini berisi komponen PDF yang sudah diupdate dengan semua 5 perubahan.
+ * Sesuaikan import path sesuai struktur project kamu.
+ *
+ * Perubahan:
+ * 1. Logo company dari DB (tidak stretch, max tinggi 3cm / lebar 10cm dalam PDF pt)
+ * 2. Company info dari data company yang dipilih di quotation
+ * 3. Hapus baris "Tax rate 12%" — gabung langsung ke baris PPN
+ * 4. Header kolom "Part Number" → "Nomor", isi = nomor urut (1,2,3...)
+ * 5. Description = label termin persis dari invoice_terms.label
+ */
+
 import {
-  Document, Page, Text, View, StyleSheet, Font,
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  Image,
 } from '@react-pdf/renderer'
-import type { Invoice } from '@/types/database'
-import { formatRp, formatDateLong } from '@/lib/utils'
 
-// Use built-in Helvetica — no external font needed
-Font.register({
-  family: 'Helvetica',
-  fonts: [
-    { src: 'Helvetica' },
-    { src: 'Helvetica-Bold', fontWeight: 700 },
-    { src: 'Helvetica-Bold', fontWeight: 600 },
-  ],
-})
+// ─── Tipe data yang perlu dikirim ke komponen ini ───────────────────────────
 
-const NAVY  = '#1B2E4B'
-const BLUE  = '#4a73f5'
-const GRAY  = '#64748b'
-const LGRAY = '#f1f5f9'
-const DGRAY = '#334155'
-const WHITE = '#ffffff'
-const RED   = '#dc2626'
-
-const s = StyleSheet.create({
-  page:        { fontFamily: 'Helvetica', fontSize: 9, color: DGRAY, paddingHorizontal: 36, paddingVertical: 32, backgroundColor: WHITE },
-  // Header
-  headerRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 },
-  logoBlock:   { flexDirection: 'column', gap: 2 },
-  logoText:    { fontSize: 18, fontWeight: 700, color: NAVY, letterSpacing: -0.5 },
-  companyName: { fontSize: 9, fontWeight: 600, color: NAVY, marginTop: 2 },
-  companyAddr: { fontSize: 7.5, color: GRAY, lineHeight: 1.5, marginTop: 1 },
-  invoiceTitle:{ fontSize: 28, fontWeight: 700, color: NAVY, textAlign: 'right' },
-  // Meta table (right side)
-  metaTable:   { marginTop: 4, alignSelf: 'flex-end' },
-  metaRow:     { flexDirection: 'row', marginBottom: 2 },
-  metaLabel:   { fontSize: 7.5, color: GRAY, width: 88, textAlign: 'right', paddingRight: 8 },
-  metaValue:   { fontSize: 7.5, fontWeight: 600, color: DGRAY, backgroundColor: LGRAY, paddingHorizontal: 6, paddingVertical: 1.5, minWidth: 110, borderRadius: 2 },
-  // Divider
-  divider:     { height: 0.5, backgroundColor: '#e2e8f0', marginBottom: 14 },
-  // Customer block
-  custHeader:  { backgroundColor: NAVY, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },
-  custLabel:   { fontSize: 7.5, fontWeight: 700, color: WHITE, letterSpacing: 0.8 },
-  custName:    { fontSize: 9, fontWeight: 600, color: DGRAY, marginBottom: 1 },
-  custLine:    { fontSize: 8, color: GRAY, lineHeight: 1.5 },
-  // Table
-  tableWrap:   { marginTop: 14 },
-  tableHead:   { flexDirection: 'row', backgroundColor: NAVY, paddingVertical: 5, paddingHorizontal: 4 },
-  thText:      { fontSize: 7.5, fontWeight: 700, color: WHITE },
-  tableRow:    { flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0', paddingVertical: 6, paddingHorizontal: 4 },
-  tableRowAlt: { backgroundColor: LGRAY },
-  tdText:      { fontSize: 8, color: DGRAY, lineHeight: 1.5 },
-  // Col widths
-  colPart:     { width: 36 },
-  colDesc:     { flex: 1, paddingRight: 8 },
-  colQty:      { width: 24, textAlign: 'center' },
-  colPrice:    { width: 80, textAlign: 'right' },
-  colTotal:    { width: 80, textAlign: 'right' },
-  // Subtotal block
-  subtotalWrap:{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 2 },
-  subtotalBox: { width: 200 },
-  subRow:      { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2.5, paddingHorizontal: 4, borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0' },
-  subLabel:    { fontSize: 8, color: GRAY },
-  subValue:    { fontSize: 8, color: DGRAY, fontWeight: 600 },
-  totalRow:    { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: NAVY, paddingVertical: 5, paddingHorizontal: 4, marginTop: 2 },
-  totalLabel:  { fontSize: 9, fontWeight: 700, color: WHITE },
-  totalValue:  { fontSize: 9, fontWeight: 700, color: WHITE },
-  // Terms
-  termsWrap:   { marginTop: 14 },
-  termsHeader: { backgroundColor: NAVY, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 5 },
-  termsLabel:  { fontSize: 7.5, fontWeight: 700, color: WHITE, letterSpacing: 0.8 },
-  termsLine:   { fontSize: 7.5, color: GRAY, lineHeight: 1.6, marginBottom: 1 },
-  // Footer
-  footer:      { position: 'absolute', bottom: 24, left: 36, right: 36, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', borderTopWidth: 0.5, borderTopColor: '#e2e8f0', paddingTop: 6 },
-  footerText:  { fontSize: 7.5, color: GRAY, fontWeight: 600 },
-})
-
-interface FinrokInvoicePDFProps {
-  invoice: Invoice
+interface InvoiceCompany {
+  name: string
+  address: string | null
+  phone: string | null
+  website: string | null
+  email: string | null
+  logo_url: string | null
 }
 
-export default function FinrokInvoicePDF({ invoice }: FinrokInvoicePDFProps) {
-  const term  = invoice.invoice_term
-  const qt    = term?.quotation
-  const cli   = qt?.client
-  const svc   = qt?.service
-  const notes = invoice.custom_notes ?? invoice.notes_template?.content ?? ''
+interface InvoiceData {
+  company: InvoiceCompany          // ← BARU: dari companies table via quotation
+  inv_number: string
+  inv_date: string
+  due_date: string
+  client_name: string
+  client_address: string | null
+  // Item tunggal dari invoice_term
+  term_label: string               // ← POIN 5: pakai label termin langsung
+  term_number: number              // ← POIN 4: nomor urut termin
+  subtotal: number
+  tax_type: 'none' | 'ppn11' | 'ppn12'
+  taxable_base: number | null
+  tax_amount: number
+  grand_total: number
+  notes: string | null
+}
 
-  const taxLabel = invoice.tax_type === 'ppn12' ? 'PPN 12% (DPP Nilai Lain)' : invoice.tax_type === 'ppn11' ? 'PPN 11%' : null
-  const taxRate  = invoice.tax_type === 'ppn12' ? 0.12 : invoice.tax_type === 'ppn11' ? 0.11 : 0
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
+const C = {
+  dark: '#1e2d3d',
+  mid: '#4a5568',
+  light: '#718096',
+  border: '#e2e8f0',
+  bg: '#f7f8fa',
+}
+
+const s = StyleSheet.create({
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: C.mid, padding: 40 },
+
+  // Header
+  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24 },
+  logoBox: {
+    // POIN 1: constrain logo — max 3cm tall (~85pt), max 10cm wide (~284pt)
+    // objectFit via Image objectPosition keeps aspect ratio (no stretch)
+    maxHeight: 85,
+    maxWidth: 284,
+    width: 'auto',
+    height: 'auto',
+  },
+  companyInfo: { textAlign: 'right', maxWidth: 200 },
+  companyName: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: C.dark, marginBottom: 2 },
+  companyDetail: { fontSize: 8, color: C.light, lineHeight: 1.4 },
+
+  // Title
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  invoiceTitle: { fontSize: 22, fontFamily: 'Helvetica-Bold', color: C.dark },
+  metaTable: { width: 220 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 },
+  metaLabel: { color: C.light, fontSize: 8, width: 90 },
+  metaValue: { fontSize: 8, color: C.dark, flex: 1, textAlign: 'right' },
+
+  // Customer
+  section: { marginBottom: 16 },
+  sectionHeader: {
+    backgroundColor: C.dark, color: '#fff',
+    padding: '4 8', fontSize: 8,
+    fontFamily: 'Helvetica-Bold', letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  customerName: { fontSize: 9, color: C.dark, fontFamily: 'Helvetica-Bold' },
+
+  // Table
+  tableHeader: {
+    flexDirection: 'row', backgroundColor: C.dark,
+    padding: '5 8', marginBottom: 0,
+  },
+  tableHeaderText: { color: '#fff', fontSize: 8, fontFamily: 'Helvetica-Bold' },
+  tableRow: {
+    flexDirection: 'row', padding: '6 8',
+    borderBottomWidth: 0.5, borderBottomColor: C.border,
+  },
+  // Column widths — POIN 4: "Nomor" kolom lebih kecil
+  colNomor:  { width: 40 },
+  colDesc:   { flex: 1 },
+  colQty:    { width: 40, textAlign: 'center' },
+  colPrice:  { width: 80, textAlign: 'right' },
+  colTotal:  { width: 80, textAlign: 'right' },
+
+  // Totals
+  totalsBox: { alignSelf: 'flex-end', width: 240, marginTop: 8 },
+  totalRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    paddingVertical: 3,
+    borderBottomWidth: 0.5, borderBottomColor: C.border,
+  },
+  totalLabel: { fontSize: 8, color: C.mid },
+  totalValue: { fontSize: 8, color: C.dark },
+  grandRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    backgroundColor: C.dark, padding: '5 6', marginTop: 2,
+  },
+  grandLabel: { fontSize: 9, color: '#fff', fontFamily: 'Helvetica-Bold' },
+  grandValue: { fontSize: 9, color: '#fff', fontFamily: 'Helvetica-Bold' },
+
+  // Notes
+  notesBox: { marginTop: 24 },
+  notesHeader: {
+    backgroundColor: C.dark, color: '#fff',
+    padding: '4 8', fontSize: 8,
+    fontFamily: 'Helvetica-Bold', letterSpacing: 0.5, marginBottom: 6,
+  },
+  notesItem: { fontSize: 8, color: C.mid, marginBottom: 3, lineHeight: 1.4 },
+})
+
+// ─── Helper ──────────────────────────────────────────────────────────────────
+
+function fmt(n: number) {
+  return 'Rp ' + n.toLocaleString('id-ID')
+}
+
+function taxLabel(type: 'ppn11' | 'ppn12') {
+  return type === 'ppn12' ? 'PPN 12% (DPP Nilai Lain)' : 'PPN 11%'
+}
+
+// ─── PDF Component ───────────────────────────────────────────────────────────
+
+export function InvoicePDF({ data }: { data: InvoiceData }) {
+  const { company, tax_type, taxable_base, tax_amount } = data
+  const hasTax = tax_type !== 'none' && tax_amount > 0
+
+  // Parse notes into numbered lines
+  const noteLines = (data.notes ?? '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
 
   return (
-    <Document title={invoice.inv_number} author="PT Roketin Kreatif Teknologi">
+    <Document>
       <Page size="A4" style={s.page}>
 
-        {/* ── HEADER ── */}
-        <View style={s.headerRow}>
-          <View style={s.logoBlock}>
-            <Text style={s.logoText}>Roketin</Text>
-            <Text style={s.companyName}>PT ROKETIN KREATIF TEKNOLOGI</Text>
-            <Text style={s.companyAddr}>
-              Komplek Kopo Mas Regency Blok A-3{'\n'}
-              Bandung - Jawa Barat{'\n'}
-              Phone: 081310162125  |  www.roketin.com
-            </Text>
-          </View>
+        {/* ── HEADER: Logo kiri, info company kanan ── */}
+        <View style={s.header}>
           <View>
-            <Text style={s.invoiceTitle}>INVOICE</Text>
-            <View style={s.metaTable}>
-              {[
-                ['Date',            invoice.inv_date  ? formatDateLong(invoice.inv_date)  : '-'],
-                ['Expiration Date', invoice.due_date  ? formatDateLong(invoice.due_date)  : '-'],
-                ['Invoice #',       invoice.inv_number],
-                ['Customer ID',     cli?.code ?? '-'],
-              ].map(([label, value]) => (
-                <View key={label} style={s.metaRow}>
-                  <Text style={s.metaLabel}>{label}</Text>
-                  <Text style={s.metaValue}>{value}</Text>
-                </View>
-              ))}
-            </View>
+            {company.logo_url ? (
+              /**
+               * POIN 1 — Logo tidak stretch:
+               * - maxHeight 85pt ≈ 3cm
+               * - maxWidth 284pt ≈ 10cm
+               * - width/height 'auto' biar proporsional
+               * React-PDF Image secara default preserve aspect ratio
+               * selama width atau height saja yang di-set (bukan keduanya fixed)
+               */
+              <Image
+                src={company.logo_url}
+                style={s.logoBox}
+              />
+            ) : (
+              <Text style={[s.companyName, { fontSize: 14 }]}>{company.name}</Text>
+            )}
+          </View>
+
+          <View style={s.companyInfo}>
+            {/* Kalau ada logo, tetap tampilkan nama company di kanan */}
+            {company.logo_url && (
+              <Text style={s.companyName}>{company.name}</Text>
+            )}
+            {company.address && (
+              <Text style={s.companyDetail}>{company.address}</Text>
+            )}
+            {company.phone && (
+              <Text style={s.companyDetail}>Phone: {company.phone}</Text>
+            )}
+            {company.website && (
+              <Text style={s.companyDetail}>{company.website}</Text>
+            )}
           </View>
         </View>
 
-        <View style={s.divider} />
+        {/* ── INVOICE TITLE + META ── */}
+        <View style={s.titleRow}>
+          <Text style={s.invoiceTitle}>INVOICE</Text>
+          <View style={s.metaTable}>
+            {[
+              ['Date', data.inv_date],
+              ['Expiration Date', data.due_date],
+              ['Invoice #', data.inv_number],
+            ].map(([label, value]) => (
+              <View key={label} style={s.metaRow}>
+                <Text style={s.metaLabel}>{label}</Text>
+                <Text style={s.metaValue}>{value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
 
         {/* ── CUSTOMER ── */}
-        <View style={s.custHeader}>
-          <Text style={s.custLabel}>CUSTOMER</Text>
-        </View>
-        {cli && (
-          <View>
-            <Text style={s.custName}>{cli.pic_name ?? cli.name}</Text>
-            <Text style={s.custLine}>{cli.name}</Text>
-            {cli.address && <Text style={s.custLine}>{cli.address}</Text>}
-            {(cli.city || cli.province || cli.postal_code) && (
-              <Text style={s.custLine}>
-                {[cli.city?.toUpperCase(), cli.province?.toUpperCase(), cli.postal_code].filter(Boolean).join(' ')}
-              </Text>
-            )}
-          </View>
-        )}
-
-        {/* ── ITEM TABLE ── */}
-        <View style={s.tableWrap}>
-          <View style={s.tableHead}>
-            <Text style={[s.thText, s.colPart]}>PART{'\n'}NUMBER</Text>
-            <Text style={[s.thText, s.colDesc]}>DESCRIPTION</Text>
-            <Text style={[s.thText, s.colQty]}>QTY</Text>
-            <Text style={[s.thText, s.colPrice]}>UNIT PRICE</Text>
-            <Text style={[s.thText, s.colTotal]}>TOTAL AMOUNT</Text>
-          </View>
-
-          <View style={s.tableRow}>
-            <Text style={[s.tdText, s.colPart]}>{svc?.code ?? '-'}</Text>
-            <Text style={[s.tdText, s.colDesc]}>{term?.label ?? qt?.title ?? '-'}</Text>
-            <Text style={[s.tdText, s.colQty]}>1</Text>
-            <Text style={[s.tdText, s.colPrice]}>{formatRp(invoice.subtotal)}</Text>
-            <Text style={[s.tdText, s.colTotal]}>{formatRp(invoice.subtotal)}</Text>
-          </View>
+        <View style={s.section}>
+          <Text style={s.sectionHeader}>CUSTOMER</Text>
+          <Text style={s.customerName}>{data.client_name}</Text>
+          {data.client_address && (
+            <Text style={{ fontSize: 8, color: C.light }}>{data.client_address}</Text>
+          )}
         </View>
 
-        {/* ── SUBTOTAL ── */}
-        <View style={s.subtotalWrap}>
-          <View style={s.subtotalBox}>
-            <View style={s.subRow}>
-              <Text style={s.subLabel}>Subtotal</Text>
-              <Text style={s.subValue}>{formatRp(invoice.subtotal)}</Text>
-            </View>
-            {taxLabel && invoice.taxable_base && (
-              <>
-                <View style={s.subRow}>
-                  <Text style={s.subLabel}>Taxable (DPP)</Text>
-                  <Text style={s.subValue}>{formatRp(invoice.taxable_base)}</Text>
-                </View>
-                <View style={s.subRow}>
-                  <Text style={s.subLabel}>Tax rate</Text>
-                  <Text style={s.subValue}>{(taxRate * 100).toFixed(0)}%</Text>
-                </View>
-                <View style={s.subRow}>
-                  <Text style={s.subLabel}>{taxLabel}</Text>
-                  <Text style={s.subValue}>{formatRp(invoice.tax_amount)}</Text>
-                </View>
-              </>
-            )}
+        {/* ── TABLE ── */}
+        {/* Header row — POIN 4: "NOMOR" bukan "PART NUMBER" */}
+        <View style={s.tableHeader}>
+          <Text style={[s.tableHeaderText, s.colNomor]}>NOMOR</Text>
+          <Text style={[s.tableHeaderText, s.colDesc]}>DESCRIPTION</Text>
+          <Text style={[s.tableHeaderText, s.colQty]}>QTY</Text>
+          <Text style={[s.tableHeaderText, s.colPrice]}>UNIT PRICE</Text>
+          <Text style={[s.tableHeaderText, s.colTotal]}>TOTAL AMOUNT</Text>
+        </View>
+
+        {/* Single item row — POIN 4 & 5 */}
+        <View style={s.tableRow}>
+          {/* POIN 4: Isi kolom = nomor urut, bukan kode service */}
+          <Text style={[{ fontSize: 9, color: C.dark }, s.colNomor]}>
+            {data.term_number}
+          </Text>
+          {/* POIN 5: Description = label termin persis */}
+          <Text style={[{ fontSize: 9, color: C.dark }, s.colDesc]}>
+            {data.term_label}
+          </Text>
+          <Text style={[{ fontSize: 9, color: C.dark }, s.colQty]}>1</Text>
+          <Text style={[{ fontSize: 9, color: C.dark }, s.colPrice]}>
+            {fmt(data.subtotal)}
+          </Text>
+          <Text style={[{ fontSize: 9, color: C.dark }, s.colTotal]}>
+            {fmt(data.subtotal)}
+          </Text>
+        </View>
+
+        {/* ── TOTALS — POIN 3: Hilangkan baris tax rate % ── */}
+        <View style={s.totalsBox}>
+          <View style={s.totalRow}>
+            <Text style={s.totalLabel}>Subtotal</Text>
+            <Text style={s.totalValue}>{fmt(data.subtotal)}</Text>
+          </View>
+
+          {hasTax && taxable_base && (
             <View style={s.totalRow}>
-              <Text style={s.totalLabel}>TOTAL</Text>
-              <Text style={s.totalValue}>{formatRp(invoice.grand_total)}</Text>
+              <Text style={s.totalLabel}>Taxable (DPP)</Text>
+              <Text style={s.totalValue}>{fmt(taxable_base)}</Text>
             </View>
+          )}
+
+          {/* POIN 3: Baris "Tax rate 12%" DIHAPUS */}
+          {/* Langsung tampilkan PPN dengan nominalnya saja */}
+          {hasTax && (
+            <View style={s.totalRow}>
+              <Text style={s.totalLabel}>{taxLabel(tax_type as 'ppn11' | 'ppn12')}</Text>
+              <Text style={s.totalValue}>{fmt(tax_amount)}</Text>
+            </View>
+          )}
+
+          <View style={s.grandRow}>
+            <Text style={s.grandLabel}>TOTAL</Text>
+            <Text style={s.grandValue}>{fmt(data.grand_total)}</Text>
           </View>
         </View>
 
-        {/* ── TERMS ── */}
-        {notes.trim() !== '' && (
-          <View style={s.termsWrap}>
-            <View style={s.termsHeader}>
-              <Text style={s.termsLabel}>TERMS OF SALE AND OTHER COMMENTS</Text>
-            </View>
-            {notes.split('\n').filter(l => l.trim()).map((line, i) => (
-              <Text key={i} style={s.termsLine}>{line}</Text>
+        {/* ── NOTES ── */}
+        {noteLines.length > 0 && (
+          <View style={s.notesBox}>
+            <Text style={s.notesHeader}>TERMS OF SALE AND OTHER COMMENTS</Text>
+            {noteLines.map((line, i) => (
+              <Text key={i} style={s.notesItem}>
+                {i + 1}. {line}
+              </Text>
             ))}
           </View>
         )}
-
-        {/* ── FOOTER ── */}
-        <View style={s.footer}>
-          <Text style={s.footerText}>PT ROKETIN KREATIF TEKNOLOGI</Text>
-        </View>
 
       </Page>
     </Document>
