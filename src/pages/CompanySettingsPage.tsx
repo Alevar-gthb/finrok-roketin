@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getCompanies,
@@ -6,19 +6,9 @@ import {
   updateCompany,
   setDefaultCompany,
   uploadCompanyLogo,
-  deleteCompanyLogo,
   type Company,
 } from '@/services/companyService'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { useToast } from '@/components/ui/use-toast'
+import { Button, Input, Modal } from '@/components/shared'
 import { Building2, Upload, Star, Pencil, Plus, X } from 'lucide-react'
 
 const EMPTY_FORM = {
@@ -35,7 +25,6 @@ const EMPTY_FORM = {
 
 export default function CompanySettingsPage() {
   const qc = useQueryClient()
-  const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [open, setOpen] = useState(false)
@@ -44,18 +33,22 @@ export default function CompanySettingsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
 
   const { data: companies = [], isLoading } = useQuery({
     queryKey: ['companies'],
     queryFn: getCompanies,
   })
 
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3000)
+  }
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       let logo_url = form.logo_url
-
       if (editing) {
-        // Upload logo first if new file selected
         if (logoFile) {
           setUploading(true)
           logo_url = await uploadCompanyLogo(editing.id, logoFile)
@@ -63,7 +56,6 @@ export default function CompanySettingsPage() {
         }
         return updateCompany(editing.id, { ...form, logo_url })
       } else {
-        // Create first, then upload logo
         const created = await createCompany({ ...form, logo_url: null })
         if (logoFile) {
           setUploading(true)
@@ -76,19 +68,17 @@ export default function CompanySettingsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['companies'] })
-      toast({ title: editing ? 'Company diperbarui' : 'Company ditambahkan' })
+      showToast(editing ? 'Company diperbarui' : 'Company ditambahkan')
       handleClose()
     },
-    onError: (e: Error) => {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' })
-    },
+    onError: (e: Error) => showToast(`Error: ${e.message}`),
   })
 
   const defaultMutation = useMutation({
     mutationFn: setDefaultCompany,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['companies'] })
-      toast({ title: 'Default company diubah' })
+      showToast('Default company diubah')
     },
   })
 
@@ -139,174 +129,161 @@ export default function CompanySettingsPage() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  const fields: [keyof typeof EMPTY_FORM, string][] = [
+    ['name',    'Nama Company *'],
+    ['address', 'Alamat'],
+    ['phone',   'No. Telepon'],
+    ['website', 'Website'],
+    ['email',   'Email'],
+    ['npwp',    'NPWP'],
+  ]
+
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="page">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 bg-slate-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
+
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <Building2 className="w-5 h-5" />
-          <h1 className="text-xl font-medium">Company Settings</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-foreground flex items-center gap-2">
+            <Building2 size={20} /> Company Settings
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Kelola data company untuk invoice & quotation</p>
         </div>
         <Button onClick={openAdd} size="sm">
-          <Plus className="w-4 h-4 mr-1" /> Tambah Company
+          <Plus size={14} /> Tambah Company
         </Button>
       </div>
 
+      {/* List */}
       {isLoading ? (
-        <p className="text-muted-foreground text-sm">Memuat...</p>
+        <p className="text-sm text-muted-foreground">Memuat...</p>
+      ) : companies.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">
+          <Building2 size={32} className="mx-auto mb-2 opacity-30" />
+          Belum ada company. Klik "Tambah Company" untuk mulai.
+        </div>
       ) : (
         <div className="space-y-3">
           {companies.map(c => (
-            <div
-              key={c.id}
-              className="flex items-center gap-4 border rounded-lg p-4"
-            >
+            <div key={c.id} className="flex items-center gap-4 border border-border rounded-lg p-4 bg-white hover:bg-secondary/20 transition-colors">
               {/* Logo */}
-              <div className="w-16 h-12 flex items-center justify-center bg-muted rounded shrink-0">
+              <div className="w-16 h-12 flex items-center justify-center bg-secondary/40 rounded shrink-0 border border-border">
                 {c.logo_url ? (
-                  <img
-                    src={c.logo_url}
-                    alt={c.name}
-                    className="max-h-12 max-w-[64px] object-contain"
-                  />
+                  <img src={c.logo_url} alt={c.name} className="max-h-10 max-w-[60px] object-contain" />
                 ) : (
-                  <Building2 className="w-6 h-6 text-muted-foreground" />
+                  <Building2 size={20} className="text-muted-foreground" />
                 )}
               </div>
 
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{c.name}</span>
+                  <span className="font-medium text-sm text-foreground">{c.name}</span>
                   {c.is_default && (
-                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
                       Default
                     </span>
                   )}
+                  {!c.is_active && (
+                    <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Nonaktif</span>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground truncate">
-                  {c.phone} {c.website ? `· ${c.website}` : ''}
+                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                  {[c.phone, c.website, c.email].filter(Boolean).join(' · ')}
                 </p>
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
                 {!c.is_default && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <button
                     onClick={() => defaultMutation.mutate(c.id)}
+                    className="p-1.5 rounded text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
                     title="Jadikan default"
                   >
-                    <Star className="w-4 h-4" />
-                  </Button>
+                    <Star size={14} />
+                  </button>
                 )}
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <button
                   onClick={() => openEdit(c)}
+                  className="p-1.5 rounded text-muted-foreground hover:text-rok-600 hover:bg-rok-50 transition-colors"
+                  title="Edit"
                 >
-                  <Pencil className="w-4 h-4" />
-                </Button>
+                  <Pencil size={14} />
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Dialog Add/Edit */}
-      <Dialog open={open} onOpenChange={v => !v && handleClose()}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {editing ? 'Edit Company' : 'Tambah Company'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 mt-2">
-            {/* Logo upload */}
-            <div>
-              <Label className="mb-1 block">Logo</Label>
-              <div className="flex items-center gap-3">
-                <div className="w-24 h-16 border rounded flex items-center justify-center bg-muted">
-                  {logoPreview ? (
-                    <img
-                      src={logoPreview}
-                      alt="preview"
-                      className="max-h-14 max-w-[88px] object-contain"
-                    />
-                  ) : (
-                    <Building2 className="w-6 h-6 text-muted-foreground" />
-                  )}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Button
+      {/* Modal Add/Edit */}
+      <Modal open={open} onClose={handleClose} title={editing ? 'Edit Company' : 'Tambah Company'} width="max-w-lg">
+        <div className="space-y-4">
+          {/* Logo upload */}
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Logo</p>
+            <div className="flex items-center gap-3">
+              <div className="w-24 h-16 border border-border rounded flex items-center justify-center bg-secondary/30 shrink-0">
+                {logoPreview ? (
+                  <img src={logoPreview} alt="preview" className="max-h-14 max-w-[88px] object-contain" />
+                ) : (
+                  <Building2 size={20} className="text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Upload size={12} /> Upload Logo
+                </Button>
+                {logoPreview && (
+                  <button
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={removeLogo}
+                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
                   >
-                    <Upload className="w-3 h-3 mr-1" />
-                    Upload Logo
-                  </Button>
-                  {logoPreview && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive"
-                      onClick={removeLogo}
-                    >
-                      <X className="w-3 h-3 mr-1" /> Hapus
-                    </Button>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    PNG, JPG, SVG. Maks 2MB.
-                  </p>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
-                  className="hidden"
-                  onChange={handleLogoChange}
-                />
+                    <X size={11} /> Hapus logo
+                  </button>
+                )}
+                <p className="text-[10px] text-muted-foreground">PNG, JPG, SVG. Maks 2MB.</p>
               </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                className="hidden"
+                onChange={handleLogoChange}
+              />
             </div>
-
-            {/* Fields */}
-            {([
-              ['name', 'Nama Company *'],
-              ['address', 'Alamat'],
-              ['phone', 'No. Telepon'],
-              ['website', 'Website'],
-              ['email', 'Email'],
-              ['npwp', 'NPWP'],
-            ] as [keyof typeof form, string][]).map(([key, label]) => (
-              <div key={key}>
-                <Label className="mb-1 block">{label}</Label>
-                <Input
-                  value={(form[key] as string) ?? ''}
-                  onChange={e =>
-                    setForm(f => ({ ...f, [key]: e.target.value }))
-                  }
-                />
-              </div>
-            ))}
           </div>
 
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={handleClose}>
-              Batal
-            </Button>
+          {/* Fields */}
+          {fields.map(([key, label]) => (
+            <Input
+              key={key}
+              label={label}
+              value={(form[key] as string) ?? ''}
+              onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+            />
+          ))}
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={handleClose}>Batal</Button>
             <Button
               onClick={() => saveMutation.mutate()}
               disabled={!form.name || saveMutation.isPending || uploading}
+              loading={saveMutation.isPending || uploading}
             >
               {saveMutation.isPending || uploading ? 'Menyimpan...' : 'Simpan'}
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </Modal>
     </div>
   )
 }
