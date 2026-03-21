@@ -5,10 +5,12 @@ import { PageHeader, StatusBadge, Button, Input, Select, Modal, EmptyState, Load
 import { formatRp, formatDate } from '@/lib/utils'
 import type { Invoice } from '@/types/database'
 import { CreditCard, Search, Paperclip, X } from 'lucide-react'
+import { useCompanyStore } from '@/store/useCompanyStore'
 
 export default function Payments() {
+  const { selectedCompanyId } = useCompanyStore()
   // Default: hanya tampilkan issued + overdue
-  const { data: invoices, isLoading } = useInvoices()
+  const { data: invoices, isLoading } = useInvoices({ companyId: selectedCompanyId })
   const markPaid = useMarkPaid()
   const [search, setSearch]       = useState('')
   const [filterStatus, setFilter] = useState<'issued_overdue'|'all'|'paid'>('issued_overdue')

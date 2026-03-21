@@ -1,34 +1,44 @@
-import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileText, Receipt, CreditCard, TrendingUp, Settings, LogOut, Users, Building2, FolderKanban, ChevronDown } from 'lucide-react'
+import { NavLink, useLocation } from 'react-router-dom'
+import {
+  LayoutDashboard, FileText, Receipt, CreditCard, TrendingUp,
+  Settings, LogOut, Users, Building2, FolderKanban, ChevronDown, ChevronRight, Settings2,
+} from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { signOut } from '@/lib/auth'
 import { useQuery } from '@tanstack/react-query'
 import { getCompanies } from '@/services/companyService'
 import { useCompanyStore } from '@/store/useCompanyStore'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
-const nav = [
-  { to: '/',            label: 'Dashboard',       icon: LayoutDashboard, adminOnly: false },
-  { to: '/quotations',  label: 'Quotations',       icon: FileText,        adminOnly: false },
-  { to: '/invoices',    label: 'Invoices',         icon: Receipt,         adminOnly: false },
-  { to: '/payments',    label: 'Payments',         icon: CreditCard,      adminOnly: false },
-  { to: '/income',      label: 'Income',           icon: TrendingUp,      adminOnly: false },
-  { to: '/projects',    label: 'Projects',         icon: FolderKanban,    adminOnly: false },
-  { to: '/master',      label: 'Master Data',      icon: Settings,        adminOnly: false },
-  { to: '/users',       label: 'Users',            icon: Users,           adminOnly: true  },
-  { to: '/companies',   label: 'Company Settings', icon: Building2,       adminOnly: true  },
+// Menu utama — terkena company filter
+const mainNav = [
+  { to: '/',           label: 'Dashboard',  icon: LayoutDashboard, end: true  },
+  { to: '/quotations', label: 'Quotations', icon: FileText,        end: false },
+  { to: '/invoices',   label: 'Invoices',   icon: Receipt,         end: false },
+  { to: '/payments',   label: 'Payments',   icon: CreditCard,      end: false },
+  { to: '/income',     label: 'Income',     icon: TrendingUp,      end: false },
+  { to: '/projects',   label: 'Projects',   icon: FolderKanban,    end: false },
+]
+
+// Submenu Configuration — tidak terkena company filter
+const configNav = [
+  { to: '/master',    label: 'Master Data',       icon: Settings,  adminOnly: false },
+  { to: '/users',     label: 'Users',             icon: Users,     adminOnly: true  },
+  { to: '/companies', label: 'Company Settings',  icon: Building2, adminOnly: true  },
 ]
 
 export default function Sidebar() {
   const { profile } = useAuth()
+  const location = useLocation()
   const { selectedCompanyId, setSelectedCompanyId } = useCompanyStore()
+  const [configOpen, setConfigOpen] = useState(false)
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
     queryFn: getCompanies,
   })
 
-  // Set default company otomatis saat pertama load
+  // Set default company otomatis
   useEffect(() => {
     if (!selectedCompanyId && companies.length > 0) {
       const def = companies.find(c => c.is_default)
@@ -36,13 +46,21 @@ export default function Sidebar() {
     }
   }, [companies])
 
+  // Auto-buka Configuration kalau sedang di salah satu submenu-nya
+  useEffect(() => {
+    const isInConfig = configNav.some(item => location.pathname.startsWith(item.to))
+    if (isInConfig) setConfigOpen(true)
+  }, [location.pathname])
+
+  const isInConfig = configNav.some(item => location.pathname.startsWith(item.to))
+
   const ROLE_BADGE: Record<string, string> = {
     admin:   'bg-rok-100 text-rok-700',
     finance: 'bg-blue-100 text-blue-700',
     viewer:  'bg-slate-100 text-slate-600',
   }
 
-  const selectedName = companies.find(c => c.id === selectedCompanyId)?.name ?? 'Semua Company'
+  const visibleConfigNav = configNav.filter(item => !item.adminOnly || profile?.role === 'admin')
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-56 bg-white border-r border-border flex flex-col z-30">
@@ -81,11 +99,12 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-        {nav.filter(item => !item.adminOnly || profile?.role === 'admin').map(({ to, label, icon: Icon }) => (
+        {/* Main menu */}
+        {mainNav.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
+            end={end}
             className={({ isActive }) =>
               `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isActive
@@ -98,6 +117,55 @@ export default function Sidebar() {
             {label}
           </NavLink>
         ))}
+
+        {/* Divider */}
+        <div className="pt-2 pb-1">
+          <div className="border-t border-border" />
+        </div>
+
+        {/* Configuration group */}
+        {visibleConfigNav.length > 0 && (
+          <div>
+            <button
+              onClick={() => setConfigOpen(v => !v)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isInConfig
+                  ? 'bg-rok-50 text-rok-700'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Settings2 size={15} />
+                Configuration
+              </div>
+              {configOpen
+                ? <ChevronDown size={12} className="text-muted-foreground" />
+                : <ChevronRight size={12} className="text-muted-foreground" />
+              }
+            </button>
+
+            {configOpen && (
+              <div className="mt-0.5 ml-3 pl-3 border-l border-border space-y-0.5">
+                {visibleConfigNav.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    className={({ isActive }) =>
+                      `flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        isActive
+                          ? 'bg-rok-50 text-rok-700 border border-rok-200'
+                          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                      }`
+                    }
+                  >
+                    <Icon size={13} />
+                    {label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* User */}

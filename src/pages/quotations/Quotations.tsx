@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getCompanies } from '@/services/companyService'
+import { useCompanyStore } from '@/store/useCompanyStore'
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import {
   useQuotationSummaries, useCreateQuotation, useUpdateQTStatus,
@@ -25,7 +26,8 @@ export default function Quotations() {
 }
 
 function QuotationList() {
-  const { data: summaries, isLoading } = useQuotationSummaries()
+  const { selectedCompanyId } = useCompanyStore()
+  const { data: summaries, isLoading } = useQuotationSummaries(selectedCompanyId)
   const { data: clients }  = useClients()
   const { data: services } = useServices()
   const createQT  = useCreateQuotation()

@@ -2,12 +2,14 @@ import { useDashboard } from '@/hooks/useFinrok'
 import { PageHeader, LoadingSpinner } from '@/components/shared'
 import { formatRp } from '@/lib/utils'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts'
+import { useCompanyStore } from '@/store/useCompanyStore'
 
 const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']
 
 export default function Income() {
-  const { data, isLoading } = useDashboard()
+  const { selectedCompanyId } = useCompanyStore()
+  const { data, isLoading } = useDashboard(selectedCompanyId)
   if (isLoading) return <LoadingSpinner />
 
   const chartData = MONTHS_SHORT.map((name, i) => {

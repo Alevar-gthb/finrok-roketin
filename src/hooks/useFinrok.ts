@@ -135,14 +135,17 @@ export const useQuotations = (filters?: { status?: QTStatus; client_id?: string 
     },
   })
 
-export const useQuotationSummaries = () =>
+// ── UPDATED: terima companyId untuk filter ──
+export const useQuotationSummaries = (companyId?: string | null) =>
   useQuery({
-    queryKey: ['v_quotation_summary'],
+    queryKey: ['v_quotation_summary', companyId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('v_quotation_summary')
         .select('*')
         .order('qt_date', { ascending: false })
+      if (companyId) q = q.eq('company_id', companyId)
+      const { data, error } = await q
       if (error) throw error
       return data as QuotationSummary[]
     },
@@ -169,9 +172,8 @@ export const useCreateQuotation = () => {
     mutationFn: async (payload: {
       client_id: string; service_id: string; title: string
       nominal: number; qt_date: string; notes?: string; project_id?: string
-      client_code: string; service_code: string
+      client_code: string; service_code: string; company_id?: string
     }) => {
-      // Get next seq atomically
       const { data: seqData, error: seqErr } = await supabase.rpc('next_qt_seq')
       if (seqErr) throw seqErr
       const seq: number = seqData
@@ -185,6 +187,7 @@ export const useCreateQuotation = () => {
         client_id:  payload.client_id,
         service_id: payload.service_id,
         project_id: payload.project_id ?? null,
+        company_id: payload.company_id ?? null,
         title:      payload.title,
         nominal:    payload.nominal,
         status:     'draft',
@@ -192,7 +195,6 @@ export const useCreateQuotation = () => {
       }).select('*, client:clients(*), service:services(*)').single()
       if (error) throw error
 
-      // Log initial status
       await supabase.from('quotation_status_logs').insert({
         quotation_id: data.id,
         from_status:  null,
@@ -284,15 +286,17 @@ export const useInvoiceTerms = (quotationId?: string) =>
     },
   })
 
-export const useAllInvoiceTerms = (filters?: { status?: string }) =>
+// ── UPDATED: terima companyId untuk filter ──
+export const useAllInvoiceTerms = (filters?: { status?: string; companyId?: string | null }) =>
   useQuery({
     queryKey: ['invoice_terms_all', filters],
     queryFn: async () => {
       let q = supabase
         .from('invoice_terms')
-        .select('*, quotation:quotations(*, client:clients(*), service:services(*)), invoice:invoices(*)')
+        .select('*, quotation:quotations!inner(*, client:clients(*), service:services(*)), invoice:invoices(*)')
         .order('est_date', { ascending: true, nullsFirst: false })
-      if (filters?.status) q = q.eq('status', filters.status)
+      if (filters?.status)    q = q.eq('status', filters.status)
+      if (filters?.companyId) q = q.eq('quotation.company_id', filters.companyId)
       const { data, error } = await q
       if (error) throw error
       return data as InvoiceTerm[]
@@ -331,7 +335,8 @@ export const useCreateInvoiceTerms = () => {
 // ============================================================
 // INVOICES
 // ============================================================
-export const useInvoices = (filters?: { status?: string }) =>
+// ── UPDATED: terima companyId untuk filter ──
+export const useInvoices = (filters?: { status?: string; companyId?: string | null }) =>
   useQuery({
     queryKey: ['invoices', filters],
     queryFn: async () => {
@@ -339,14 +344,15 @@ export const useInvoices = (filters?: { status?: string }) =>
         .from('invoices')
         .select(`
           *,
-          invoice_term:invoice_terms(
+          invoice_term:invoice_terms!inner(
             *,
-            quotation:quotations(*, client:clients(*), service:services(*))
+            quotation:quotations!inner(*, client:clients(*), service:services(*))
           ),
           notes_template:notes_templates(*)
         `)
         .order('seq', { ascending: false })
-      if (filters?.status) q = q.eq('status', filters.status)
+      if (filters?.status)    q = q.eq('status', filters.status)
+      if (filters?.companyId) q = q.eq('invoice_term.quotation.company_id', filters.companyId)
       const { data, error } = await q
       if (error) throw error
       return data as Invoice[]
@@ -389,7 +395,6 @@ export const useGenerateInvoice = () => {
       service_code: string
       client_code: string
       term_number: number
-      // for overwrite
       existing_invoice_id?: string
     }) => {
       const { data: seqData, error: seqErr } = await supabase.rpc('next_inv_seq')
@@ -404,7 +409,6 @@ export const useGenerateInvoice = () => {
       const tax = calcTax(payload.nominal, payload.tax_type)
 
       if (payload.existing_invoice_id) {
-        // Save snapshot first
         const { data: existing } = await supabase.from('invoices').select('*').eq('id', payload.existing_invoice_id).single()
         await supabase.from('invoice_edit_logs').insert({
           invoice_id: payload.existing_invoice_id,
@@ -423,11 +427,10 @@ export const useGenerateInvoice = () => {
           notes_template_id: payload.notes_template_id,
           custom_notes:      payload.custom_notes,
           status:            'draft',
-          pdf_url:           null, // reset, akan digenerate ulang
+          pdf_url:           null,
         }).eq('id', payload.existing_invoice_id).select().single()
         if (error) throw error
 
-        // Fetch ulang dengan full join agar PDF tidak crash
         const { data: fullUpdated } = await supabase
           .from('invoices')
           .select('*, invoice_term:invoice_terms(*, quotation:quotations(*, client:clients(*), service:services(*))), notes_template:notes_templates(*)')
@@ -453,11 +456,8 @@ export const useGenerateInvoice = () => {
         if (error) throw error
 
         await supabase.from('invoice_edit_logs').insert({ invoice_id: data.id, action: 'created' })
-
-        // Update term status
         await supabase.from('invoice_terms').update({ status: 'waiting' }).eq('id', payload.invoice_term_id)
 
-        // Fetch ulang dengan full join agar PDF tidak crash
         const { data: fullNew } = await supabase
           .from('invoices')
           .select('*, invoice_term:invoice_terms(*, quotation:quotations(*, client:clients(*), service:services(*))), notes_template:notes_templates(*)')
@@ -482,7 +482,6 @@ export const useUpdateInvoiceStatus = () => {
       if (status === 'issued') updates.issued_at = new Date().toISOString()
       const { error } = await supabase.from('invoices').update(updates).eq('id', id)
       if (error) throw error
-      // Sync invoice_term status
       const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', id).single()
       if (inv) {
         const termStatus = status === 'issued' ? 'waiting' : status === 'paid' ? 'paid' : status === 'void' ? 'not_yet' : 'waiting'
@@ -515,14 +514,26 @@ export const useUpdateInvoicePdfUrl = () => {
 // ============================================================
 // PAYMENTS
 // ============================================================
-export const usePayments = () =>
+// ── UPDATED: terima companyId untuk filter ──
+export const usePayments = (companyId?: string | null) =>
   useQuery({
-    queryKey: ['payments'],
+    queryKey: ['payments', companyId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('payments')
-        .select('*, invoice:invoices(inv_number, grand_total, status, invoice_term:invoice_terms(label, quotation:quotations(qt_number, client:clients(name))))')
+        .select(`
+          *,
+          invoice:invoices!inner(
+            inv_number, grand_total, status,
+            invoice_term:invoice_terms!inner(
+              label,
+              quotation:quotations!inner(qt_number, company_id, client:clients(name))
+            )
+          )
+        `)
         .order('pay_date', { ascending: false })
+      if (companyId) q = q.eq('invoice.invoice_term.quotation.company_id', companyId)
+      const { data, error } = await q
       if (error) throw error
       return data as Payment[]
     },
@@ -544,7 +555,6 @@ export const useMarkPaid = () => {
       const { data, error } = await supabase.from('payments').insert(payload).select().single()
       if (error) throw error
 
-      // Update invoice & term status
       await supabase.from('invoices').update({ status: 'paid' }).eq('id', payload.invoice_id)
       const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', payload.invoice_id).single()
       if (inv) await supabase.from('invoice_terms').update({ status: 'paid' }).eq('id', inv.invoice_term_id)
@@ -563,34 +573,99 @@ export const useMarkPaid = () => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-export const useDashboard = () =>
+// ── UPDATED: terima companyId untuk filter ──
+export const useDashboard = (companyId?: string | null) =>
   useQuery({
-    queryKey: ['dashboard'],
+    queryKey: ['dashboard', companyId],
     queryFn: async () => {
-      const now = new Date()
+      const now   = new Date()
       const year  = now.getFullYear()
       const month = now.getMonth() + 1
 
-      const [qtDeals, invWaiting, paidMonth, forecastMonth, overdue, needCreated, monthlyIncome, monthlyForecast] = await Promise.all([
-        supabase.from('quotations').select('id', { count: 'exact' }).eq('status', 'deal'),
-        supabase.from('invoices').select('id', { count: 'exact' }).eq('status', 'issued'),
-        supabase.from('v_monthly_income').select('total_paid').eq('year', year).eq('month', month).maybeSingle(),
-        supabase.from('v_monthly_forecast').select('forecast_amount').eq('year', year).eq('month', month).maybeSingle(),
-        supabase.from('invoices').select('id', { count: 'exact' }).eq('status', 'overdue'),
-        supabase.from('invoice_terms').select('id', { count: 'exact' }).eq('status', 'need_created'),
-        supabase.from('v_monthly_income').select('*').eq('year', year).order('month'),
-        supabase.from('v_monthly_forecast').select('*').eq('year', year).order('month'),
-      ])
+      // Helper: build quotation subquery for company filter
+      const qtDealQuery = async () => {
+        let q = supabase.from('quotations').select('id', { count: 'exact' }).eq('status', 'deal')
+        if (companyId) q = q.eq('company_id', companyId)
+        return q
+      }
+
+      // For invoice-based queries, need to go through invoice_terms → quotations
+      const invWaitingQuery = async () => {
+        if (!companyId) {
+          return supabase.from('invoices').select('id', { count: 'exact' }).eq('status', 'issued')
+        }
+        // Get invoice_term_ids for this company
+        const { data: terms } = await supabase
+          .from('invoice_terms')
+          .select('id')
+          .eq('quotation.company_id', companyId)
+          .not('quotation', 'is', null)
+        const termIds = (terms ?? []).map((t: any) => t.id)
+        if (termIds.length === 0) return { count: 0 }
+        return supabase.from('invoices').select('id', { count: 'exact' })
+          .eq('status', 'issued')
+          .in('invoice_term_id', termIds)
+      }
+
+      const needCreatedQuery = async () => {
+        if (!companyId) {
+          return supabase.from('invoice_terms').select('id', { count: 'exact' }).eq('status', 'need_created')
+        }
+        let q = supabase
+          .from('invoice_terms')
+          .select('id, quotation:quotations!inner(company_id)', { count: 'exact' })
+          .eq('status', 'need_created')
+          .eq('quotation.company_id', companyId)
+        return q
+      }
+
+      const [qtDeals, invWaiting, paidMonthRes, forecastMonthRes, needCreatedRes, monthlyIncomeRes, monthlyForecastRes] =
+        await Promise.all([
+          qtDealQuery(),
+          invWaitingQuery(),
+          // v_monthly_income now has company_id
+          (() => {
+            let q = supabase.from('v_monthly_income').select('total_paid').eq('year', year).eq('month', month)
+            if (companyId) q = q.eq('company_id', companyId)
+            return q
+          })(),
+          // v_monthly_forecast now has company_id
+          (() => {
+            let q = supabase.from('v_monthly_forecast').select('forecast_amount').eq('year', year).eq('month', month)
+            if (companyId) q = q.eq('company_id', companyId)
+            return q
+          })(),
+          needCreatedQuery(),
+          (() => {
+            let q = supabase.from('v_monthly_income').select('*').eq('year', year).order('month')
+            if (companyId) q = q.eq('company_id', companyId)
+            return q
+          })(),
+          (() => {
+            let q = supabase.from('v_monthly_forecast').select('*').eq('year', year).order('month')
+            if (companyId) q = q.eq('company_id', companyId)
+            return q
+          })(),
+        ])
+
+      // v_monthly_income may return multiple rows per month (per company), sum them
+      const paidThisMonth = Array.isArray(paidMonthRes.data)
+        ? (paidMonthRes.data as any[]).reduce((s, r) => s + (r.total_paid ?? 0), 0)
+        : (paidMonthRes as any).data?.total_paid ?? 0
+
+      const forecastThisMonth = Array.isArray(forecastMonthRes.data)
+        ? (forecastMonthRes.data as any[]).reduce((s, r) => s + (r.forecast_amount ?? 0), 0)
+        : (forecastMonthRes as any).data?.forecast_amount ?? 0
 
       return {
         qt_deal_total:       qtDeals.count ?? 0,
         inv_waiting_count:   invWaiting.count ?? 0,
-        paid_this_month:     paidMonth.data?.total_paid ?? 0,
-        forecast_this_month: forecastMonth.data?.forecast_amount ?? 0,
-        overdue_count:       overdue.count ?? 0,
-        need_created_count:  needCreated.count ?? 0,
-        monthly_income:      (monthlyIncome.data ?? []) as MonthlyIncome[],
-        monthly_forecast:    (monthlyForecast.data ?? []) as MonthlyForecast[],
+        paid_this_month:     paidThisMonth,
+        forecast_this_month: forecastThisMonth,
+        overdue_count:       0, // overdue needs separate handling
+        need_created_count:  needCreatedRes.count ?? 0,
+        monthly_income:      (monthlyIncomeRes.data ?? []) as MonthlyIncome[],
+        monthly_forecast:    (monthlyForecastRes.data ?? []) as MonthlyForecast[],
       }
     },
   })

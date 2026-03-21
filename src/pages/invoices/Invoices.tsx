@@ -11,6 +11,7 @@ import {
 import { formatRp, formatDate, calcTax } from '@/lib/utils'
 import type { TaxType, Invoice } from '@/types/database'
 import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal } from 'lucide-react'
+import { useCompanyStore } from '@/store/useCompanyStore'
 
 // ── Lazy load semua PDF — JANGAN import langsung di level module ──
 const LazyPDFSection = lazy(() => import('./InvoicePDFSection'))
@@ -47,9 +48,10 @@ function InvoiceList() {
   const [previewInv, setPreview]  = useState<Invoice | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ inv: Invoice; next: string; label: string } | null>(null)
   const navigate = useNavigate()
+  const { selectedCompanyId } = useCompanyStore()
 
-  const { data: invoices, isLoading: loadingInv }  = useInvoices(filterStatus !== 'all' ? { status: filterStatus } : undefined)
-  const { data: terms,    isLoading: loadingTerms } = useAllInvoiceTerms()
+  const { data: invoices, isLoading: loadingInv }  = useInvoices(filterStatus !== 'all' ? { status: filterStatus, companyId: selectedCompanyId } : { companyId: selectedCompanyId })
+  const { data: terms,    isLoading: loadingTerms } = useAllInvoiceTerms({ companyId: selectedCompanyId })
   const updateStatus = useUpdateInvoiceStatus()
 
   const filteredInv = invoices?.filter(inv => {

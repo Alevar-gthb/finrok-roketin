@@ -4,14 +4,16 @@ import { formatRp, formatDate } from '@/lib/utils'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { RefreshCw, TrendingUp, FileText, Clock, AlertCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useCompanyStore } from '@/store/useCompanyStore'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']
 
 export default function Dashboard() {
-  const { data, isLoading } = useDashboard()
+  const { selectedCompanyId } = useCompanyStore()
+  const { data, isLoading } = useDashboard(selectedCompanyId)
   const { mutate: refreshOverdue, isPending: refreshing } = useRefreshOverdue()
-  const { data: needCreated } = useAllInvoiceTerms({ status: 'need_created' })
-  const { data: overdueInvoices } = useInvoices({ status: 'overdue' })
+  const { data: needCreated } = useAllInvoiceTerms({ status: 'need_created', companyId: selectedCompanyId })
+  const { data: overdueInvoices } = useInvoices({ status: 'overdue', companyId: selectedCompanyId })
   const navigate = useNavigate()
 
   if (isLoading) return <LoadingSpinner />

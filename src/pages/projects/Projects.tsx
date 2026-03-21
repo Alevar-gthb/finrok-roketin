@@ -23,13 +23,12 @@ export default function Projects() {
   )
 }
 
-// ─── Status config ────────────────────────────────────────────
 const STATUS_CONFIG = {
-  planning:  { label: 'Planning',   color: 'bg-blue-100 text-blue-700'   },
-  active:    { label: 'Active',     color: 'bg-green-100 text-green-700' },
-  completed: { label: 'Completed',  color: 'bg-slate-100 text-slate-600' },
-  on_hold:   { label: 'On Hold',    color: 'bg-amber-100 text-amber-700' },
-  cancelled: { label: 'Cancelled',  color: 'bg-red-100 text-red-600'     },
+  planning:  { label: 'Planning',  color: 'bg-blue-100 text-blue-700'   },
+  active:    { label: 'Active',    color: 'bg-green-100 text-green-700' },
+  completed: { label: 'Completed', color: 'bg-slate-100 text-slate-600' },
+  on_hold:   { label: 'On Hold',   color: 'bg-amber-100 text-amber-700' },
+  cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-600'     },
 }
 
 // ─── Project List ─────────────────────────────────────────────
@@ -37,7 +36,6 @@ function ProjectList() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { selectedCompanyId } = useCompanyStore()
-
   const [showCreate, setShowCreate] = useState(false)
   const [filterStatus, setFilterStatus] = useState('all')
 
@@ -64,7 +62,6 @@ function ProjectList() {
         }
       />
 
-      {/* Filter status */}
       <div className="flex items-center gap-2 mb-4">
         {(['all', 'planning', 'active', 'on_hold', 'completed', 'cancelled'] as const).map(s => (
           <button
@@ -76,12 +73,11 @@ function ProjectList() {
                 : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
             }`}
           >
-            {s === 'all' ? 'Semua' : STATUS_CONFIG[s as keyof typeof STATUS_CONFIG]?.label ?? s}
+            {s === 'all' ? 'Semua' : STATUS_CONFIG[s]?.label}
           </button>
         ))}
       </div>
 
-      {/* List */}
       {filtered.length === 0 ? (
         <EmptyState
           title="Belum ada project"
@@ -90,7 +86,9 @@ function ProjectList() {
         />
       ) : (
         <div className="space-y-3">
-          {filtered.map(p => <ProjectCard key={p.id} project={p} onClick={() => navigate(`/projects/${p.id}`)} />)}
+          {filtered.map(p => (
+            <ProjectCard key={p.id} project={p} onClick={() => navigate(`/projects/${p.id}`)} />
+          ))}
         </div>
       )}
 
@@ -112,7 +110,6 @@ function ProjectCard({ project: p, onClick }: { project: ProjectSummary; onClick
   const budget = p.budget ?? p.total_quotation_nominal
   const expensePct = budget > 0 ? Math.round((p.total_expense / budget) * 100) : 0
   const isOverBudget = p.budget && p.total_expense > p.budget
-
   const statusCfg = STATUS_CONFIG[p.status] ?? STATUS_CONFIG.active
 
   return (
@@ -122,7 +119,6 @@ function ProjectCard({ project: p, onClick }: { project: ProjectSummary; onClick
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          {/* Top row */}
           <div className="flex items-center gap-2 mb-1">
             <span className="font-mono text-[10px] text-muted-foreground">{p.code}</span>
             <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statusCfg.color}`}>
@@ -134,12 +130,8 @@ function ProjectCard({ project: p, onClick }: { project: ProjectSummary; onClick
               </span>
             )}
           </div>
-
-          {/* Name & client */}
           <p className="font-semibold text-sm text-foreground truncate">{p.name}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{p.client_names || '—'}</p>
-
-          {/* Dates */}
           {(p.start_date || p.end_date) && (
             <p className="text-[11px] text-muted-foreground mt-1">
               {p.start_date ? formatDate(p.start_date) : '?'} → {p.end_date ? formatDate(p.end_date) : '?'}
@@ -147,8 +139,7 @@ function ProjectCard({ project: p, onClick }: { project: ProjectSummary; onClick
           )}
         </div>
 
-        {/* Right: financials */}
-        <div className="text-right shrink-0 min-w-[160px]">
+        <div className="text-right shrink-0 min-w-[180px]">
           <div className="flex items-center justify-end gap-3 mb-2">
             <div>
               <p className="text-[10px] text-muted-foreground">Quotation</p>
@@ -156,7 +147,7 @@ function ProjectCard({ project: p, onClick }: { project: ProjectSummary; onClick
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground">Expense</p>
-              <p className={`text-xs font-semibold ${isOverBudget ? 'text-red-600' : 'text-foreground'}`}>
+              <p className={`text-xs font-semibold ${isOverBudget ? 'text-red-600' : ''}`}>
                 {formatRp(p.total_expense, { short: true })}
               </p>
             </div>
@@ -167,19 +158,14 @@ function ProjectCard({ project: p, onClick }: { project: ProjectSummary; onClick
               </p>
             </div>
           </div>
-
-          {/* Budget progress bar */}
-          <div className="w-full bg-secondary rounded-full h-1.5 mt-1">
+          <div className="w-full bg-secondary rounded-full h-1.5">
             <div
               className={`h-1.5 rounded-full transition-all ${isOverBudget ? 'bg-red-500' : expensePct > 80 ? 'bg-amber-500' : 'bg-rok-500'}`}
               style={{ width: `${Math.min(expensePct, 100)}%` }}
             />
           </div>
-          <p className="text-[10px] text-muted-foreground mt-0.5 text-right">
-            {expensePct}% dari budget
-          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5 text-right">{expensePct}% dari budget</p>
         </div>
-
         <ChevronRight size={16} className="text-muted-foreground shrink-0 mt-1" />
       </div>
     </div>
@@ -191,33 +177,53 @@ function CreateProjectModal({ onClose, onSuccess }: { onClose: () => void; onSuc
   const { selectedCompanyId } = useCompanyStore()
 
   const [form, setForm] = useState({
-    name:       '',
-    code:       generateProjectCode(),
-    start_date: '',
-    end_date:   '',
-    budget_pct: '100',
-    status:     'active' as const,
+    name:        '',
+    code:        generateProjectCode(),
+    start_date:  '',
+    end_date:    '',
+    budget_pct:  '100',
+    status:      'active' as const,
     description: '',
-    notes:      '',
   })
+  const [selectedClientId, setSelectedClientId] = useState('')
   const [selectedQuotations, setSelectedQuotations] = useState<string[]>([])
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
-  const { data: availableQTs = [] } = useQuery({
+  // Fetch all available deal quotations
+  const { data: allAvailableQTs = [] } = useQuery({
     queryKey: ['available-deal-quotations', selectedCompanyId],
     queryFn: () => getAvailableDealQuotations(selectedCompanyId),
   })
 
+  // Derive unique clients from available QTs
+  const clientOptions = Array.from(
+    new Map(
+      allAvailableQTs
+        .map((q: any) => ({ id: q.clients?.id ?? q.client_id, name: q.clients?.name ?? '—' }))
+        .filter(c => c.id)
+        .map(c => [c.id, c])
+    ).values()
+  )
+
+  // Filter QTs by selected client
+  const filteredQTs = selectedClientId
+    ? allAvailableQTs.filter((q: any) => (q.clients?.id ?? q.client_id) === selectedClientId)
+    : allAvailableQTs
+
+  // Reset selected quotations when client changes
+  const handleClientChange = (clientId: string) => {
+    setSelectedClientId(clientId)
+    setSelectedQuotations([])
+  }
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      // Cari company_id dari quotation yang dipilih
-      const firstQT = availableQTs.find(q => selectedQuotations.includes(q.id))
-      const company_id = firstQT?.company_id ?? selectedCompanyId ?? undefined
+      const firstQT = allAvailableQTs.find((q: any) => selectedQuotations.includes(q.id))
+      const company_id = (firstQT as any)?.company_id ?? selectedCompanyId ?? undefined
 
-      // Hitung total nominal dari QT yang dipilih
-      const totalNominal = availableQTs
-        .filter(q => selectedQuotations.includes(q.id))
-        .reduce((s, q) => s + (q.nominal ?? 0), 0)
+      const totalNominal = allAvailableQTs
+        .filter((q: any) => selectedQuotations.includes(q.id))
+        .reduce((s: number, q: any) => s + (q.nominal ?? 0), 0)
 
       const budget_pct = parseFloat(form.budget_pct) || 100
       const budget = totalNominal * budget_pct / 100
@@ -231,11 +237,9 @@ function CreateProjectModal({ onClose, onSuccess }: { onClose: () => void; onSuc
         budget,
         company_id,
         description: form.description || undefined,
-        notes:       form.notes || undefined,
         status:      form.status,
       })
 
-      // Link semua quotation yang dipilih
       for (const qtId of selectedQuotations) {
         await linkQuotationToProject(qtId, project.id)
       }
@@ -245,17 +249,17 @@ function CreateProjectModal({ onClose, onSuccess }: { onClose: () => void; onSuc
     onSuccess,
   })
 
+  const totalNominal = allAvailableQTs
+    .filter((q: any) => selectedQuotations.includes(q.id))
+    .reduce((s: number, q: any) => s + (q.nominal ?? 0), 0)
+
+  const budget = totalNominal * (parseFloat(form.budget_pct) || 100) / 100
+
   const toggleQT = (id: string) => {
     setSelectedQuotations(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     )
   }
-
-  const totalNominal = availableQTs
-    .filter(q => selectedQuotations.includes(q.id))
-    .reduce((s, q) => s + (q.nominal ?? 0), 0)
-
-  const budget = totalNominal * (parseFloat(form.budget_pct) || 100) / 100
 
   return (
     <Modal open onClose={onClose} title="Buat Project Baru" width="max-w-xl">
@@ -276,21 +280,43 @@ function CreateProjectModal({ onClose, onSuccess }: { onClose: () => void; onSuc
           <option value="on_hold">On Hold</option>
         </Select>
 
-        {/* Link quotations */}
+        {/* Step 1: Pilih Client */}
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2">
-            Link Quotation (Deal) *
-            {availableQTs.length === 0 && (
-              <span className="ml-2 text-amber-600">— Tidak ada quotation deal yang tersedia</span>
+          <p className="text-xs font-medium text-muted-foreground mb-1">
+            1. Pilih Client *
+          </p>
+          <Select
+            label=""
+            value={selectedClientId}
+            onChange={e => handleClientChange(e.target.value)}
+          >
+            <option value="">— Pilih client —</option>
+            {(clientOptions as any[]).map((c: any) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </Select>
+        </div>
+
+        {/* Step 2: Pilih Quotation (filtered by client) */}
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">
+            2. Pilih Quotation Deal *
+            {selectedClientId && filteredQTs.length === 0 && (
+              <span className="ml-2 text-amber-600">— Tidak ada quotation deal untuk client ini</span>
+            )}
+            {!selectedClientId && (
+              <span className="ml-2 text-muted-foreground italic">— Pilih client dulu</span>
             )}
           </p>
-          <div className="space-y-1.5 max-h-[180px] overflow-y-auto border border-border rounded-lg p-2">
-            {availableQTs.length === 0 ? (
+          <div className="space-y-1.5 max-h-[200px] overflow-y-auto border border-border rounded-lg p-2">
+            {!selectedClientId ? (
+              <p className="text-xs text-muted-foreground text-center py-4">Pilih client terlebih dahulu.</p>
+            ) : filteredQTs.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">
-                Semua quotation deal sudah terhubung ke project, atau belum ada quotation deal.
+                Tidak ada quotation deal yang tersedia untuk client ini.
               </p>
             ) : (
-              availableQTs.map(qt => (
+              filteredQTs.map((qt: any) => (
                 <label
                   key={qt.id}
                   className={`flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition-colors ${
@@ -308,7 +334,7 @@ function CreateProjectModal({ onClose, onSuccess }: { onClose: () => void; onSuc
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium">{qt.qt_number}</p>
                     <p className="text-[11px] text-muted-foreground truncate">
-                      {(qt as any).clients?.name} · {(qt as any).services?.code} · {formatRp(qt.nominal ?? 0, { short: true })}
+                      {qt.services?.code} · {qt.title} · {formatRp(qt.nominal ?? 0, { short: true })}
                     </p>
                   </div>
                 </label>
@@ -335,7 +361,7 @@ function CreateProjectModal({ onClose, onSuccess }: { onClose: () => void; onSuc
                 </div>
               </div>
               <div className="flex-1 text-right">
-                <p className="text-[10px] text-muted-foreground">Total QT</p>
+                <p className="text-[10px] text-muted-foreground">Total QT dipilih</p>
                 <p className="text-xs font-medium">{formatRp(totalNominal)}</p>
                 <p className="text-[10px] text-muted-foreground mt-1">Budget</p>
                 <p className="text-sm font-bold text-rok-700">{formatRp(budget)}</p>
@@ -354,7 +380,7 @@ function CreateProjectModal({ onClose, onSuccess }: { onClose: () => void; onSuc
           <Button
             onClick={() => createMutation.mutate()}
             loading={createMutation.isPending}
-            disabled={!form.name || createMutation.isPending}
+            disabled={!form.name || !selectedClientId || selectedQuotations.length === 0 || createMutation.isPending}
           >
             <FolderKanban size={13} /> Buat Project
           </Button>
