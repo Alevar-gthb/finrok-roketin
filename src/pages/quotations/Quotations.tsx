@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getCompanies } from '@/services/companyService'
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import {
   useQuotationSummaries, useCreateQuotation, useUpdateQTStatus,
@@ -219,9 +221,29 @@ function QuotationList() {
 
 // ─── Create QT Modal ─────────────────────────────────────────
 function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: any) {
-  const [form, setForm] = useState({
-    client_id: '', service_id: '', title: '', nominal: '', qt_date: new Date().toISOString().split('T')[0], notes: '',
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: getCompanies,
   })
+
+  const [form, setForm] = useState({
+    client_id:  '',
+    service_id: '',
+    company_id: '',
+    title:      '',
+    nominal:    '',
+    qt_date:    new Date().toISOString().split('T')[0],
+    notes:      '',
+  })
+
+  // Set default company otomatis
+  useEffect(() => {
+    if (!form.company_id && companies.length > 0) {
+      const def = companies.find((c: any) => c.is_default)
+      if (def) setForm(f => ({ ...f, company_id: def.id }))
+    }
+  }, [companies])
+
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   const selectedClient  = clients.find((c: any) => c.id === form.client_id)
@@ -240,6 +262,21 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
   return (
     <Modal open={open} onClose={onClose} title="Buat Quotation Baru" width="max-w-xl">
       <div className="space-y-4">
+
+        {/* Company selector */}
+        <Select
+          label="Company *"
+          value={form.company_id}
+          onChange={e => set('company_id', e.target.value)}
+        >
+          <option value="">Pilih company...</option>
+          {companies.map((c: any) => (
+            <option key={c.id} value={c.id}>
+              {c.name}{c.is_default ? ' (default)' : ''}
+            </option>
+          ))}
+        </Select>
+
         <div className="grid grid-cols-2 gap-3">
           <Select label="Client *" value={form.client_id} onChange={e => set('client_id', e.target.value)}>
             <option value="">Pilih client...</option>
@@ -263,7 +300,11 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
 
         <div className="flex gap-2 justify-end pt-2">
           <Button variant="outline" onClick={onClose}>Batal</Button>
-          <Button onClick={handleSubmit} loading={loading} disabled={!form.client_id || !form.service_id || !form.title || !form.nominal}>
+          <Button
+            onClick={handleSubmit}
+            loading={loading}
+            disabled={!form.client_id || !form.service_id || !form.title || !form.nominal || !form.company_id}
+          >
             <FileText size={13} /> Buat Quotation
           </Button>
         </div>
@@ -323,7 +364,6 @@ function SetupTerminModal({ qt, onClose }: any) {
     setTerms(prev => prev.map((t, idx) => {
       if (idx !== i) return t
       const updated = { ...t, [k]: v }
-      // Kalau mode pct dan pct berubah, auto-hitung nominal
       if (k === 'pct') {
         const pctVal = parseFloat(v) || 0
         updated.nominal = pctVal > 0 ? String(Math.round(qt.nominal * pctVal / 100)) : ''
@@ -456,7 +496,6 @@ function SetupTerminModal({ qt, onClose }: any) {
           ))}
         </div>
 
-        {/* Validation */}
         <div className={`rounded-md p-2.5 text-xs flex items-center justify-between ${Math.abs(selisih) < 1 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
           <span>Total termin: <strong className="num">{formatRp(totalTermin)}</strong></span>
           {Math.abs(selisih) >= 1 && <span>Selisih: <strong>{formatRp(Math.abs(selisih))}</strong> {selisih > 0 ? '(kurang)' : '(lebih)'}</span>}
@@ -486,7 +525,6 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
   const createTermsMutation = useCreateInvoiceTerms()
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
-  // New terms to add
   const [newTerms, setNewTerms] = useState<{ label: string; nominal: string; est_date: string; mode: 'rp'|'pct'; pct: string }[]>([])
   const [showAddTerms, setShowAddTerms] = useState(false)
 
@@ -555,7 +593,6 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
   return (
     <Modal open title={`Edit QT — ${qt.qt_number}`} onClose={onClose} width="max-w-xl">
       <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-        {/* Edit Info */}
         <div className="rounded-lg border border-border bg-white p-4 space-y-3">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Info Quotation</p>
           <div className="text-xs text-muted-foreground bg-secondary/40 rounded p-2">
@@ -566,7 +603,6 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
           <Input label="Notes (opsional)" value={form.notes} onChange={e => set('notes', e.target.value)} />
         </div>
 
-        {/* Existing Terms */}
         {existingTerms && existingTerms.length > 0 && (
           <div className="rounded-lg border border-border bg-white p-4 space-y-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Termin yang Ada</p>
@@ -591,7 +627,6 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
           </div>
         )}
 
-        {/* Add New Terms */}
         <div className="rounded-lg border border-border bg-white p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tambah Termin Baru</p>
@@ -641,7 +676,6 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
             </div>
           ))}
 
-          {/* Balance indicator */}
           {(existingTerms?.length ?? 0) + newTerms.length > 0 && (
             <div className={`rounded-md p-2.5 text-xs flex items-center justify-between ${isBalanced ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
               <span>Total termin: <strong>{formatRp(allTotal)}</strong> / QT: <strong>{formatRp(nominalQT)}</strong></span>
