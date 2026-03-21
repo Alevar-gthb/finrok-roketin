@@ -223,6 +223,7 @@ function QuotationList() {
 
 // ─── Create QT Modal ─────────────────────────────────────────
 function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: any) {
+  const { selectedCompanyId } = useCompanyStore()
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
     queryFn: getCompanies,
@@ -238,13 +239,15 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
     notes:      '',
   })
 
-  // Set default company otomatis
+  // Set default company: ikuti company filter aktif, fallback ke is_default
   useEffect(() => {
-    if (!form.company_id && companies.length > 0) {
-      const def = companies.find((c: any) => c.is_default)
-      if (def) setForm(f => ({ ...f, company_id: def.id }))
+    if (companies.length > 0) {
+      const target = selectedCompanyId
+        ? companies.find((c: any) => c.id === selectedCompanyId)
+        : companies.find((c: any) => c.is_default)
+      if (target) setForm(f => ({ ...f, company_id: target.id }))
     }
-  }, [companies])
+  }, [companies, selectedCompanyId])
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 

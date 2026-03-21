@@ -33,15 +33,14 @@ export interface ProjectSummary extends Project {
   total_expense: number
 }
 
-export interface ManpowerCost {
+export interface SalaryRecord {
   id: string
   project_id: string
+  salary_date: string
   person_name: string
   role: string | null
-  rate: number
-  months: number
-  total_cost: number
-  notes: string | null
+  amount: number
+  description: string | null
   created_at: string
 }
 
@@ -86,7 +85,7 @@ export async function getProjects(companyId?: string | null): Promise<ProjectSum
           )
         )
       ),
-      project_manpower_costs (total_cost),
+      project_salary_records (amount),
       project_other_expenses (amount)
     `)
     .order('created_at', { ascending: false })
@@ -109,8 +108,8 @@ export async function getProjects(companyId?: string | null): Promise<ProjectSum
       .filter((t: any) => t.status === 'paid')
       .reduce((s: number, t: any) => s + (t.nominal ?? 0), 0)
 
-    const total_manpower = ((p.project_manpower_costs as any[]) ?? [])
-      .reduce((s: number, m: any) => s + (m.total_cost ?? 0), 0)
+    const total_manpower = ((p.project_salary_records as any[]) ?? [])
+      .reduce((s: number, m: any) => s + (m.amount ?? 0), 0)
     const total_other_expenses = ((p.project_other_expenses as any[]) ?? [])
       .reduce((s: number, e: any) => s + (e.amount ?? 0), 0)
 
@@ -224,28 +223,28 @@ export async function getAvailableDealQuotations(companyId?: string | null) {
   return data ?? []
 }
 
-// ─── Manpower ────────────────────────────────────────────────
+// ─── Salary Records (Penggajian) ─────────────────────────────
 
-export async function getManpowerCosts(projectId: string): Promise<ManpowerCost[]> {
+export async function getSalaryRecords(projectId: string): Promise<SalaryRecord[]> {
   const { data, error } = await supabase
-    .from('project_manpower_costs')
+    .from('project_salary_records')
     .select('*')
     .eq('project_id', projectId)
-    .order('created_at')
+    .order('salary_date', { ascending: false })
   if (error) throw error
   return data ?? []
 }
 
-export async function createManpowerCost(payload: {
+export async function createSalaryRecord(payload: {
   project_id: string
+  salary_date: string
   person_name: string
   role?: string
-  rate: number
-  months: number
-  notes?: string
-}): Promise<ManpowerCost> {
+  amount: number
+  description?: string
+}): Promise<SalaryRecord> {
   const { data, error } = await supabase
-    .from('project_manpower_costs')
+    .from('project_salary_records')
     .insert(payload)
     .select()
     .single()
@@ -253,19 +252,8 @@ export async function createManpowerCost(payload: {
   return data
 }
 
-export async function updateManpowerCost(id: string, payload: Partial<ManpowerCost>): Promise<ManpowerCost> {
-  const { data, error } = await supabase
-    .from('project_manpower_costs')
-    .update({ ...payload, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single()
-  if (error) throw error
-  return data
-}
-
-export async function deleteManpowerCost(id: string) {
-  const { error } = await supabase.from('project_manpower_costs').delete().eq('id', id)
+export async function deleteSalaryRecord(id: string) {
+  const { error } = await supabase.from('project_salary_records').delete().eq('id', id)
   if (error) throw error
 }
 

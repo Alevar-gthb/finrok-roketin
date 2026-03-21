@@ -3,7 +3,7 @@ import { useParams, useNavigate, NavLink } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getProject, updateProject, getProjectQuotations,
-  getManpowerCosts, createManpowerCost, deleteManpowerCost,
+  getSalaryRecords, createSalaryRecord, deleteSalaryRecord,
   getOtherExpenses, createOtherExpense, deleteOtherExpense,
   linkQuotationToProject, unlinkQuotationFromProject,
   getAvailableDealQuotations, EXPENSE_CATEGORY_LABELS,
@@ -109,9 +109,9 @@ function TimelineTab({ project }: { project: any }) {
   })
 
   // Fetch expenses
-  const { data: manpower = [] } = useQuery({
-    queryKey: ['project-manpower', project.id],
-    queryFn: () => getManpowerCosts(project.id),
+  const { data: salaryRecs = [] } = useQuery({
+    queryKey: ['project-salary', project.id],
+    queryFn: () => getSalaryRecords(project.id),
   })
   const { data: otherExp = [] } = useQuery({
     queryKey: ['project-other-expenses', project.id],
@@ -142,7 +142,7 @@ function TimelineTab({ project }: { project: any }) {
   const allTerms = (quotations as any[]).flatMap((q: any) => q.invoice_terms ?? [])
   const total_income_forecast = allTerms.reduce((s: number, t: any) => s + (t.nominal ?? 0), 0)
   const total_income_paid     = allTerms.filter((t: any) => t.status === 'paid').reduce((s: number, t: any) => s + (t.nominal ?? 0), 0)
-  const total_manpower        = (manpower as any[]).reduce((s: number, m: any) => s + (m.total_cost ?? 0), 0)
+  const total_manpower        = (salaryRecs as any[]).reduce((s: number, r: any) => s + (r.amount ?? 0), 0)
   const total_other           = (otherExp as any[]).reduce((s: number, e: any) => s + (e.amount ?? 0), 0)
   const total_expense         = total_manpower + total_other
   const total_quotation       = (quotations as any[]).reduce((s: number, q: any) => s + (q.nominal ?? 0), 0)
@@ -444,32 +444,38 @@ function IncomeTab({ projectId }: { projectId: string }) {
 // ─── Expense Tab ──────────────────────────────────────────────
 function ExpenseTab({ projectId, project }: { projectId: string; project: any }) {
   const qc = useQueryClient()
-  const [expTab, setExpTab] = useState<'manpower' | 'other'>('manpower')
-  const [showAddManpower, setShowAddManpower] = useState(false)
+  const [expTab, setExpTab] = useState<'salary' | 'other'>('salary')
+  const [showAddSalary, setShowAddSalary] = useState(false)
   const [showAddOther, setShowAddOther] = useState(false)
 
-  const { data: manpower = [], isLoading: mpLoading } = useQuery({
-    queryKey: ['project-manpower', projectId],
-    queryFn: () => getManpowerCosts(projectId),
+  const { data: salaryRecords = [], isLoading: salLoading } = useQuery({
+    queryKey: ['project-salary', projectId],
+    queryFn: () => getSalaryRecords(projectId),
   })
   const { data: otherExp = [], isLoading: otherLoading } = useQuery({
     queryKey: ['project-other-expenses', projectId],
     queryFn: () => getOtherExpenses(projectId),
   })
 
-  const totalManpower = manpower.reduce((s, m) => s + m.total_cost, 0)
-  const totalOther    = otherExp.reduce((s, e) => s + e.amount, 0)
-  const totalExpense  = totalManpower + totalOther
-  const budget        = project.budget
-  const isOverBudget  = budget && totalExpense > budget
+  const totalSalary  = salaryRecords.reduce((s, r) => s + r.amount, 0)
+  const totalOther   = otherExp.reduce((s, e) => s + e.amount, 0)
+  const totalExpense = totalSalary + totalOther
+  const budget       = project.budget
+  const isOverBudget = budget && totalExpense > budget
 
-  const deleteManpower = useMutation({
-    mutationFn: deleteManpowerCost,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['project-manpower', projectId] }),
+  const deleteSalary = useMutation({
+    mutationFn: deleteSalaryRecord,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-salary', projectId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+    },
   })
   const deleteOther = useMutation({
     mutationFn: deleteOtherExpense,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['project-other-expenses', projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-other-expenses', projectId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+    },
   })
 
   return (
@@ -477,9 +483,9 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Total Manpower', value: totalManpower, color: '' },
-          { label: 'Total Lainnya',  value: totalOther,    color: '' },
-          { label: 'Total Expense',  value: totalExpense,  color: isOverBudget ? 'text-red-600' : '' },
+          { label: 'Total Manpower', value: totalSalary,  color: '' },
+          { label: 'Total Lainnya',  value: totalOther,   color: '' },
+          { label: 'Total Expense',  value: totalExpense, color: isOverBudget ? 'text-red-600' : '' },
         ].map(card => (
           <div key={card.label} className={`rounded-lg border bg-white p-3 ${isOverBudget && card.label === 'Total Expense' ? 'border-red-200' : 'border-border'}`}>
             <p className="text-[10px] text-muted-foreground">{card.label}</p>
@@ -498,8 +504,8 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
       {/* Sub-tabs */}
       <div className="flex items-center gap-2 border-b border-border">
         {[
-          { key: 'manpower', label: `Manpower (${manpower.length})`, icon: Users },
-          { key: 'other',    label: `Lainnya (${otherExp.length})`,  icon: Receipt },
+          { key: 'salary', label: `Manpower (${salaryRecords.length})`, icon: Users },
+          { key: 'other',  label: `Lainnya (${otherExp.length})`,       icon: Receipt },
         ].map(t => (
           <button
             key={t.key}
@@ -513,11 +519,11 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
         ))}
       </div>
 
-      {/* Manpower list */}
-      {expTab === 'manpower' && (
+      {/* Salary records list */}
+      {expTab === 'salary' && (
         <div>
           <div className="flex justify-end mb-2">
-            <Button variant="outline" size="sm" onClick={() => setShowAddManpower(true)}>
+            <Button variant="outline" size="sm" onClick={() => setShowAddSalary(true)}>
               <Plus size={12} /> Tambah
             </Button>
           </div>
@@ -525,25 +531,25 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-secondary/40 border-b border-border">
-                  {['Nama', 'Role', 'Rate/bln', 'Bulan', 'Total', ''].map(h => (
+                  {['Tanggal', 'Nama', 'Role', 'Salary', 'Deskripsi', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {manpower.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-xs text-muted-foreground">Belum ada manpower.</td></tr>
+                {salaryRecords.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-xs text-muted-foreground">Belum ada pencatatan gaji.</td></tr>
                 ) : (
-                  manpower.map(m => (
-                    <tr key={m.id} className="border-b border-border last:border-0 hover:bg-secondary/20">
-                      <td className="px-4 py-3 text-xs font-medium">{m.person_name}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{m.role || '—'}</td>
-                      <td className="px-4 py-3 text-xs">{formatRp(m.rate, { short: true })}</td>
-                      <td className="px-4 py-3 text-xs">{m.months} bln</td>
-                      <td className="px-4 py-3 text-xs font-semibold">{formatRp(m.total_cost, { short: true })}</td>
+                  salaryRecords.map(r => (
+                    <tr key={r.id} className="border-b border-border last:border-0 hover:bg-secondary/20">
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{formatDate(r.salary_date)}</td>
+                      <td className="px-4 py-3 text-xs font-medium">{r.person_name}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{r.role || '—'}</td>
+                      <td className="px-4 py-3 text-xs font-semibold">{formatRp(r.amount, { short: true })}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[160px] truncate">{r.description || '—'}</td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => { if (confirm('Hapus manpower ini?')) deleteManpower.mutate(m.id) }}
+                          onClick={() => { if (confirm('Hapus record ini?')) deleteSalary.mutate(r.id) }}
                           className="text-muted-foreground hover:text-red-500 p-1"
                         >
                           <Trash2 size={12} />
@@ -552,10 +558,10 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
                     </tr>
                   ))
                 )}
-                {manpower.length > 0 && (
+                {salaryRecords.length > 0 && (
                   <tr className="bg-secondary/30">
-                    <td colSpan={4} className="px-4 py-2 text-xs font-semibold text-right">Total Manpower</td>
-                    <td colSpan={2} className="px-4 py-2 text-xs font-bold">{formatRp(totalManpower)}</td>
+                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-right">Total Manpower</td>
+                    <td colSpan={3} className="px-4 py-2 text-xs font-bold">{formatRp(totalSalary)}</td>
                   </tr>
                 )}
               </tbody>
@@ -576,14 +582,14 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-secondary/40 border-b border-border">
-                  {['Tanggal', 'Kategori', 'Deskripsi', 'Amount', ''].map(h => (
+                  {['Tanggal', 'Kategori', 'Deskripsi', 'Catatan', 'Amount', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {otherExp.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-6 text-center text-xs text-muted-foreground">Belum ada expense lainnya.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-xs text-muted-foreground">Belum ada expense lainnya.</td></tr>
                 ) : (
                   otherExp.map(e => (
                     <tr key={e.id} className="border-b border-border last:border-0 hover:bg-secondary/20">
@@ -593,7 +599,8 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
                           {EXPENSE_CATEGORY_LABELS[e.category]}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs max-w-[160px] truncate">{e.description}</td>
+                      <td className="px-4 py-3 text-xs max-w-[120px] truncate">{e.description}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">{e.notes || '—'}</td>
                       <td className="px-4 py-3 text-xs font-medium">{formatRp(e.amount, { short: true })}</td>
                       <td className="px-4 py-3">
                         <button
@@ -608,7 +615,7 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
                 )}
                 {otherExp.length > 0 && (
                   <tr className="bg-secondary/30">
-                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-right">Total Lainnya</td>
+                    <td colSpan={4} className="px-4 py-2 text-xs font-semibold text-right">Total Lainnya</td>
                     <td colSpan={2} className="px-4 py-2 text-xs font-bold">{formatRp(totalOther)}</td>
                   </tr>
                 )}
@@ -618,15 +625,15 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
         </div>
       )}
 
-      {/* Add Manpower Modal */}
-      {showAddManpower && (
-        <AddManpowerModal
+      {/* Add Salary Modal */}
+      {showAddSalary && (
+        <AddSalaryModal
           projectId={projectId}
-          onClose={() => setShowAddManpower(false)}
+          onClose={() => setShowAddSalary(false)}
           onSuccess={() => {
-            qc.invalidateQueries({ queryKey: ['project-manpower', projectId] })
+            qc.invalidateQueries({ queryKey: ['project-salary', projectId] })
             qc.invalidateQueries({ queryKey: ['projects'] })
-            setShowAddManpower(false)
+            setShowAddSalary(false)
           }}
         />
       )}
@@ -647,44 +654,44 @@ function ExpenseTab({ projectId, project }: { projectId: string; project: any })
   )
 }
 
-// ─── Add Manpower Modal ───────────────────────────────────────
-function AddManpowerModal({ projectId, onClose, onSuccess }: any) {
-  const [form, setForm] = useState({ person_name: '', role: '', rate: '', months: '1', notes: '' })
+// ─── Add Salary Modal ─────────────────────────────────────────
+function AddSalaryModal({ projectId, onClose, onSuccess }: any) {
+  const [form, setForm] = useState({
+    salary_date:  new Date().toISOString().split('T')[0],
+    person_name:  '',
+    role:         '',
+    amount:       '',
+    description:  '',
+  })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   const mutation = useMutation({
-    mutationFn: () => createManpowerCost({
-      project_id:  projectId,
-      person_name: form.person_name,
-      role:        form.role || undefined,
-      rate:        parseFloat(form.rate),
-      months:      parseFloat(form.months),
-      notes:       form.notes || undefined,
+    mutationFn: () => createSalaryRecord({
+      project_id:   projectId,
+      salary_date:  form.salary_date,
+      person_name:  form.person_name,
+      role:         form.role || undefined,
+      amount:       parseFloat(form.amount),
+      description:  form.description || undefined,
     }),
     onSuccess,
   })
 
-  const total = parseFloat(form.rate || '0') * parseFloat(form.months || '0')
-
   return (
-    <Modal open onClose={onClose} title="Tambah Manpower" width="max-w-sm">
+    <Modal open onClose={onClose} title="Tambah Pencatatan Gaji" width="max-w-sm">
       <div className="space-y-3">
+        <Input label="Tanggal *" type="date" value={form.salary_date} onChange={e => set('salary_date', e.target.value)} />
         <Input label="Nama *" value={form.person_name} onChange={e => set('person_name', e.target.value)} />
         <Input label="Role / Posisi" value={form.role} onChange={e => set('role', e.target.value)} />
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Rate / Bulan (Rp) *" type="number" value={form.rate} onChange={e => set('rate', e.target.value)} />
-          <Input label="Durasi (bulan) *" type="number" min="0.5" step="0.5" value={form.months} onChange={e => set('months', e.target.value)} />
-        </div>
-        {total > 0 && (
-          <div className="bg-rok-50 rounded-md p-2.5 text-xs text-center">
-            Total: <strong className="text-rok-700">{formatRp(total)}</strong>
-          </div>
-        )}
-        <Input label="Catatan (opsional)" value={form.notes} onChange={e => set('notes', e.target.value)} />
+        <Input label="Salary (Rp) *" type="number" value={form.amount} onChange={e => set('amount', e.target.value)} />
+        <Input label="Deskripsi (opsional)" value={form.description} onChange={e => set('description', e.target.value)} />
         <div className="flex gap-2 justify-end pt-2">
           <Button variant="outline" onClick={onClose}>Batal</Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending}
-            disabled={!form.person_name || !form.rate || !form.months}>
+          <Button
+            onClick={() => mutation.mutate()}
+            loading={mutation.isPending}
+            disabled={!form.person_name || !form.amount}
+          >
             Simpan
           </Button>
         </div>
