@@ -484,7 +484,10 @@ export const useUpdateInvoiceStatus = () => {
       if (error) throw error
       const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', id).single()
       if (inv) {
-        const termStatus = status === 'issued' ? 'waiting' : status === 'paid' ? 'paid' : status === 'void' ? 'not_yet' : 'waiting'
+        const termStatus = status === 'issued' ? 'waiting'
+        : status === 'paid'   ? 'paid'
+        : status === 'void'   ? 'need_created'  // void = bisa di-generate ulang
+        : 'waiting'
         await supabase.from('invoice_terms').update({ status: termStatus }).eq('id', inv.invoice_term_id)
       }
       await supabase.from('invoice_edit_logs').insert({ invoice_id: id, action: status === 'issued' ? 'issued' : status === 'void' ? 'voided' : 'edited' })

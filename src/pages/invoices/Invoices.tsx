@@ -59,7 +59,7 @@ function InvoiceList() {
     return !s || inv.inv_number.toLowerCase().includes(s) || (inv.invoice_term?.quotation?.client?.name ?? '').toLowerCase().includes(s)
   }) ?? []
 
-  const pendingTerms = terms?.filter(t => ['not_yet','need_created'].includes(t.status) && !t.invoice) ?? []
+  const pendingTerms = terms?.filter(t => ['not_yet', 'need_created'].includes(t.status) && (!t.invoice || (t.invoice as any).status === 'void')) ?? []
 
   const handleStatusChange = async () => {
     if (!confirmAction) return
