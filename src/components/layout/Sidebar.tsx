@@ -1,16 +1,17 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileText, Receipt, CreditCard, TrendingUp, Settings, LogOut, Users } from 'lucide-react'
+import { LayoutDashboard, FileText, Receipt, CreditCard, TrendingUp, Settings, LogOut, Users, Building2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { signOut } from '@/lib/auth'
 
 const nav = [
-  { to: '/',            label: 'Dashboard',   icon: LayoutDashboard, adminOnly: false },
-  { to: '/quotations',  label: 'Quotations',  icon: FileText,        adminOnly: false },
-  { to: '/invoices',    label: 'Invoices',    icon: Receipt,         adminOnly: false },
-  { to: '/payments',    label: 'Payments',    icon: CreditCard,      adminOnly: false },
-  { to: '/income',      label: 'Income',      icon: TrendingUp,      adminOnly: false },
-  { to: '/master',      label: 'Master Data', icon: Settings,        adminOnly: false },
-  { to: '/users',       label: 'Users',       icon: Users,           adminOnly: true  },
+  { to: '/',            label: 'Dashboard',         icon: LayoutDashboard, adminOnly: false },
+  { to: '/quotations',  label: 'Quotations',         icon: FileText,        adminOnly: false },
+  { to: '/invoices',    label: 'Invoices',           icon: Receipt,         adminOnly: false },
+  { to: '/payments',    label: 'Payments',           icon: CreditCard,      adminOnly: false },
+  { to: '/income',      label: 'Income',             icon: TrendingUp,      adminOnly: false },
+  { to: '/master',      label: 'Master Data',        icon: Settings,        adminOnly: false },
+  { to: '/users',       label: 'Users',              icon: Users,           adminOnly: true  },
+  { to: '/companies',   label: 'Company Settings',   icon: Building2,       adminOnly: true  },
 ]
 
 export default function Sidebar() {
