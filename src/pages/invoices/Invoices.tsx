@@ -196,7 +196,8 @@ function GenerateInvoice() {
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
   const navigate = useNavigate()
-  const { data: terms } = useAllInvoiceTerms()
+  const { selectedCompanyId } = useCompanyStore()
+  const { data: terms } = useAllInvoiceTerms({ companyId: selectedCompanyId })
   const { data: notesTemplates } = useNotesTemplates()
   const generateInvoice = useGenerateInvoice()
   const term = terms?.find(t => t.id === termId)
@@ -208,7 +209,26 @@ function GenerateInvoice() {
   const dueDate = (() => { const d = new Date(form.inv_date); d.setDate(d.getDate() + parseInt(form.due_days||'0')); return d })()
   const handleGenerate = async () => {
     if (!term||!qt||!cli||!svc) return
-    const result = await generateInvoice.mutateAsync({ invoice_term_id: term.id, inv_date: form.inv_date, due_days: parseInt(form.due_days), tax_type: form.tax_type, notes_template_id: form.notes_template_id||null, custom_notes: form.custom_notes||null, nominal: term.nominal, service_code: svc.code, client_code: cli.code, term_number: term.term_number, existing_invoice_id: editId??undefined })
+
+    // Auto-detect voided invoice untuk re-generate
+    // (pakai existing_invoice_id supaya UPDATE bukan INSERT, hindari 409 conflict)
+    const voidedInvoiceId = (term.invoice as any)?.status === 'void'
+      ? (term.invoice as any).id
+      : undefined
+
+    const result = await generateInvoice.mutateAsync({
+      invoice_term_id:    term.id,
+      inv_date:           form.inv_date,
+      due_days:           parseInt(form.due_days),
+      tax_type:           form.tax_type,
+      notes_template_id:  form.notes_template_id || null,
+      custom_notes:       form.custom_notes || null,
+      nominal:            term.nominal,
+      service_code:       svc.code,
+      client_code:        cli.code,
+      term_number:        term.term_number,
+      existing_invoice_id: editId ?? voidedInvoiceId,
+    })
     const inv = result as unknown as { inv_number: string; grand_total: number; id: string }
     setDone({ inv_number: inv.inv_number, grand_total: inv.grand_total, id: inv.id })
   }
@@ -234,9 +254,21 @@ function GenerateInvoice() {
     </div>
   )
 
+  const isRegenerate = !editId && (term?.invoice as any)?.status === 'void'
+
   return (
     <div className="page max-w-3xl">
-      <PageHeader title={editId?'Edit Invoice':'Generate Invoice'} sub={`Dari: ${qt?.qt_number} — ${term.label}`} action={<Button variant="outline" onClick={() => navigate(-1)}>← Kembali</Button>} />
+      <PageHeader
+        title={editId ? 'Edit Invoice' : isRegenerate ? 'Re-generate Invoice' : 'Generate Invoice'}
+        sub={`Dari: ${qt?.qt_number} — ${term.label}`}
+        action={<Button variant="outline" onClick={() => navigate(-1)}>← Kembali</Button>}
+      />
+      {isRegenerate && (
+        <div className="mb-4 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <span>⚠️</span>
+          <span>Invoice sebelumnya sudah di-void. Generate ini akan <strong>menggantikan</strong> invoice lama dengan nomor invoice baru.</span>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-5">
         <div className="col-span-2 space-y-4">
           <div className="rounded-lg border border-border bg-white p-4 space-y-3">
