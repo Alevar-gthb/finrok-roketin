@@ -1,0 +1,664 @@
+import { useState } from 'react'
+import { Routes, Route, useNavigate } from 'react-router-dom'
+import {
+  useQuotationSummaries, useCreateQuotation, useUpdateQTStatus,
+  useUpdateQuotation, useDeleteInvoiceTerm,
+  useClients, useServices, useInvoiceTerms, useCreateInvoiceTerms,
+} from '@/hooks/useFinrok'
+import {
+  PageHeader, StatusBadge, Button, Input, Select, Textarea,
+  Modal, EmptyState, LoadingSpinner, Amount,
+} from '@/components/shared'
+import { formatRp, formatDate, generateClientCode } from '@/lib/utils'
+import type { QuotationSummary, QTStatus } from '@/types/database'
+import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2 } from 'lucide-react'
+
+// ─── Main list ────────────────────────────────────────────────
+export default function Quotations() {
+  return (
+    <Routes>
+      <Route index element={<QuotationList />} />
+    </Routes>
+  )
+}
+
+function QuotationList() {
+  const { data: summaries, isLoading } = useQuotationSummaries()
+  const { data: clients }  = useClients()
+  const { data: services } = useServices()
+  const createQT  = useCreateQuotation()
+  const updateStatus = useUpdateQTStatus()
+  const navigate  = useNavigate()
+
+  const [search, setSearch]         = useState('')
+  const [filterStatus, setFilter]   = useState<string>('all')
+  const [showCreate, setShowCreate] = useState(false)
+  const [showStatus, setShowStatus] = useState<QuotationSummary | null>(null)
+  const [showTerms, setShowTerms]   = useState<QuotationSummary | null>(null)
+  const [showEdit, setShowEdit]     = useState<QuotationSummary | null>(null)
+  const updateQT    = useUpdateQuotation()
+
+  // Filter
+  const filtered = summaries?.filter(q => {
+    const matchStatus = filterStatus === 'all' || q.qt_status === filterStatus
+    const s = search.toLowerCase()
+    const matchSearch = !s || q.qt_number.toLowerCase().includes(s) || q.client_name.toLowerCase().includes(s) || q.title.toLowerCase().includes(s)
+    return matchStatus && matchSearch
+  }) ?? []
+
+  const total_nominal = filtered.reduce((s, q) => s + q.nominal, 0)
+  const total_paid    = filtered.reduce((s, q) => s + q.total_paid, 0)
+
+  if (isLoading) return <LoadingSpinner />
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="Quotations"
+        sub={`${filtered.length} quotation ditemukan`}
+        action={
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus size={14} /> Buat QT Baru
+          </Button>
+        }
+      />
+
+      {/* Filter bar */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="relative flex-1 max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            className="w-full pl-8 pr-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-rok-400"
+            placeholder="Cari nomor QT, client, judul..."
+            value={search} onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        {(['all','draft','sent','deal','lost'] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => setFilter(s)}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${filterStatus === s ? 'bg-rok-500 text-white' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'}`}
+          >
+            {s === 'all' ? 'Semua' : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+        {/* Totals */}
+        <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
+          <span>Total nominal: <strong className="text-foreground num">{formatRp(total_nominal, { short: true })}</strong></span>
+          <span>Total paid: <strong className="text-green-600 num">{formatRp(total_paid, { short: true })}</strong></span>
+        </div>
+      </div>
+
+      {/* Table */}
+      {filtered.length === 0 ? (
+        <EmptyState title="Belum ada quotation" description="Buat quotation pertama untuk memulai." action={<Button onClick={() => setShowCreate(true)}><Plus size={14} /> Buat QT</Button>} />
+      ) : (
+        <div className="rounded-lg border border-border overflow-hidden bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-secondary/40 border-b border-border">
+                {['QT Number','Date','Client','Service','Judul','Nominal','Termin','Status','Actions'].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((qt, i) => (
+                <tr key={qt.id} className={`border-b border-border last:border-0 hover:bg-rok-50/30 transition-colors ${i%2===0?'bg-white':'bg-secondary/10'}`}>
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-xs text-rok-700 font-medium">{qt.qt_number}</span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{formatDate(qt.qt_date)}</td>
+                  <td className="px-4 py-3">
+                    <div>
+                      <p className="text-xs font-medium text-foreground">{qt.client_name}</p>
+                      <p className="text-[11px] text-muted-foreground">{qt.client_code}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs">{qt.service_code}</td>
+                  <td className="px-4 py-3 max-w-[200px]">
+                    <p className="text-xs text-foreground truncate" title={qt.title}>{qt.title}</p>
+                    {qt.project_name && <p className="text-[11px] text-muted-foreground">📁 {qt.project_name}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Amount value={qt.nominal} className="text-xs" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {qt.total_terms > 0 ? (
+                      <span className="text-xs">
+                        <span className="text-green-600 font-medium">{qt.paid_terms}</span>
+                        <span className="text-muted-foreground">/{qt.total_terms}</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">–</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={qt.qt_status} type="qt" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <button
+                        onClick={() => setShowEdit(qt)}
+                        className="text-[11px] text-slate-500 hover:underline font-medium px-1 flex items-center gap-0.5"
+                      >
+                        <Pencil size={10} /> Edit
+                      </button>
+                      <button
+                        onClick={() => setShowStatus(qt)}
+                        className="text-[11px] text-rok-600 hover:underline font-medium px-1"
+                      >
+                        Status
+                      </button>
+                      {qt.qt_status === 'deal' && (
+                        <button
+                          onClick={() => setShowTerms(qt)}
+                          className="text-[11px] text-green-700 hover:underline font-medium px-1"
+                        >
+                          Termin
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Create QT Modal */}
+      <CreateQTModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        clients={clients ?? []}
+        services={services ?? []}
+        onSubmit={async (data) => {
+          await createQT.mutateAsync(data)
+          setShowCreate(false)
+        }}
+        loading={createQT.isPending}
+      />
+
+      {/* Update Status Modal */}
+      {showStatus && (
+        <UpdateStatusModal
+          qt={showStatus}
+          onClose={() => setShowStatus(null)}
+          onUpdate={async (to, notes) => {
+            await updateStatus.mutateAsync({ id: showStatus.id, from_status: showStatus.qt_status, to_status: to, notes })
+            setShowStatus(null)
+          }}
+          loading={updateStatus.isPending}
+        />
+      )}
+
+      {/* Setup Termin Modal */}
+      {showTerms && (
+        <SetupTerminModal
+          qt={showTerms}
+          onClose={() => setShowTerms(null)}
+        />
+      )}
+
+      {/* Edit QT Modal */}
+      {showEdit && (
+        <EditQTModal
+          qt={showEdit}
+          onClose={() => setShowEdit(null)}
+          onSubmit={async (data) => {
+            await updateQT.mutateAsync({ id: showEdit.id, ...data })
+            setShowEdit(null)
+          }}
+          loading={updateQT.isPending}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Create QT Modal ─────────────────────────────────────────
+function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: any) {
+  const [form, setForm] = useState({
+    client_id: '', service_id: '', title: '', nominal: '', qt_date: new Date().toISOString().split('T')[0], notes: '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  const selectedClient  = clients.find((c: any) => c.id === form.client_id)
+  const selectedService = services.find((s: any) => s.id === form.service_id)
+
+  const handleSubmit = () => {
+    if (!form.client_id || !form.service_id || !form.title || !form.nominal) return
+    onSubmit({
+      ...form,
+      nominal:      parseFloat(form.nominal),
+      client_code:  selectedClient?.code ?? generateClientCode(selectedClient?.name ?? ''),
+      service_code: selectedService?.code ?? '',
+    })
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Buat Quotation Baru" width="max-w-xl">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Select label="Client *" value={form.client_id} onChange={e => set('client_id', e.target.value)}>
+            <option value="">Pilih client...</option>
+            {clients.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Select label="Service *" value={form.service_id} onChange={e => set('service_id', e.target.value)}>
+            <option value="">Pilih service...</option>
+            {services.map((s: any) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
+          </Select>
+        </div>
+        <Input label="Tanggal QT *" type="date" value={form.qt_date} onChange={e => set('qt_date', e.target.value)} />
+        <Input label="Judul / Deskripsi Pekerjaan *" placeholder="Pengadaan Tenaga Ahli..." value={form.title} onChange={e => set('title', e.target.value)} />
+        <Input label="Nominal (Rp) *" type="number" placeholder="42000000" value={form.nominal} onChange={e => set('nominal', e.target.value)} />
+        <Textarea label="Catatan (opsional)" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
+
+        {form.client_id && form.service_id && form.nominal && (
+          <div className="bg-secondary/50 rounded-md p-3 text-xs text-muted-foreground">
+            Preview nomor QT: <span className="font-mono font-medium text-foreground">QT-XXX_{selectedService?.code?.toUpperCase()}-{selectedClient?.code?.toUpperCase()}_{new Date(form.qt_date).toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'2-digit'}).replace(/\//g,'')}</span>
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end pt-2">
+          <Button variant="outline" onClick={onClose}>Batal</Button>
+          <Button onClick={handleSubmit} loading={loading} disabled={!form.client_id || !form.service_id || !form.title || !form.nominal}>
+            <FileText size={13} /> Buat Quotation
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Update Status Modal ─────────────────────────────────────
+function UpdateStatusModal({ qt, onClose, onUpdate, loading }: any) {
+  const [to, setTo]       = useState<QTStatus>(qt.qt_status)
+  const [notes, setNotes] = useState('')
+
+  return (
+    <Modal open title={`Update Status — ${qt.qt_number}`} onClose={onClose} width="max-w-sm">
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs text-muted-foreground mb-1">Status saat ini</p>
+          <StatusBadge status={qt.qt_status} type="qt" />
+        </div>
+        <Select label="Ubah status ke" value={to} onChange={e => setTo(e.target.value as QTStatus)}>
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="deal">Deal ✓</option>
+          <option value="lost">Lost ✗</option>
+        </Select>
+        {to === 'lost' && (
+          <Textarea label="Alasan lost *" rows={2} placeholder="Kenapa klien tidak jadi?" value={notes} onChange={e => setNotes(e.target.value)} />
+        )}
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose}>Batal</Button>
+          <Button
+            onClick={() => onUpdate(to, notes)}
+            loading={loading}
+            variant={to === 'lost' ? 'destructive' : 'default'}
+            disabled={to === 'lost' && !notes}
+          >
+            {to === 'deal' ? <Check size={13} /> : to === 'lost' ? <X size={13} /> : null}
+            Simpan
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Setup Termin Modal ───────────────────────────────────────
+type TermEntry = { label: string; nominal: string; est_date: string; mode: 'rp' | 'pct'; pct: string }
+
+function SetupTerminModal({ qt, onClose }: any) {
+  const { data: existingTerms } = useInvoiceTerms(qt.id)
+  const createTerms = useCreateInvoiceTerms()
+  const [numTerms, setNumTerms] = useState(1)
+  const [terms, setTerms] = useState<TermEntry[]>([{ label: '', nominal: '', est_date: '', mode: 'rp', pct: '' }])
+
+  const setTerm = (i: number, k: string, v: string) => {
+    setTerms(prev => prev.map((t, idx) => {
+      if (idx !== i) return t
+      const updated = { ...t, [k]: v }
+      // Kalau mode pct dan pct berubah, auto-hitung nominal
+      if (k === 'pct') {
+        const pctVal = parseFloat(v) || 0
+        updated.nominal = pctVal > 0 ? String(Math.round(qt.nominal * pctVal / 100)) : ''
+      }
+      return updated
+    }))
+  }
+
+  const toggleMode = (i: number) => {
+    setTerms(prev => prev.map((t, idx) => {
+      if (idx !== i) return t
+      const newMode = t.mode === 'rp' ? 'pct' : 'rp'
+      return { ...t, mode: newMode, pct: newMode === 'pct' && t.nominal ? String(Math.round(parseFloat(t.nominal) / qt.nominal * 100)) : t.pct }
+    }))
+  }
+
+  const handleNumChange = (n: number) => {
+    setNumTerms(n)
+    setTerms(Array.from({ length: n }, (_, i) => terms[i] ?? { label: `Termin ${i+1} dari ${n}`, nominal: '', est_date: '', mode: 'rp', pct: '' }))
+  }
+
+  const totalTermin = terms.reduce((s, t) => s + (parseFloat(t.nominal) || 0), 0)
+  const selisih = qt.nominal - totalTermin
+
+  const handleSubmit = async () => {
+    await createTerms.mutateAsync({
+      quotation_id: qt.id,
+      total_terms: numTerms,
+      terms: terms.map((t, i) => ({
+        term_number: i + 1,
+        label: t.label || `${qt.title} — Termin ${i+1} dari ${numTerms}`,
+        nominal: parseFloat(t.nominal),
+        est_date: t.est_date,
+      })),
+    })
+    onClose()
+  }
+
+  if (existingTerms && existingTerms.length > 0) {
+    return (
+      <Modal open title={`Termin — ${qt.qt_number}`} onClose={onClose} width="max-w-lg">
+        <p className="text-sm text-muted-foreground mb-4">Termin sudah disetup ({existingTerms.length} termin)</p>
+        <div className="space-y-2">
+          {existingTerms.map(t => (
+            <div key={t.id} className="flex items-center justify-between p-3 rounded-md border border-border bg-secondary/30">
+              <div>
+                <p className="text-xs font-medium">{t.label}</p>
+                <p className="text-[11px] text-muted-foreground">Est: {formatDate(t.est_date)}</p>
+              </div>
+              <div className="text-right">
+                <Amount value={t.nominal} className="text-xs" />
+                <StatusBadge status={t.status} type="term" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex justify-end"><Button variant="outline" onClick={onClose}>Tutup</Button></div>
+      </Modal>
+    )
+  }
+
+  return (
+    <Modal open title={`Setup Termin — ${qt.qt_number}`} onClose={onClose} width="max-w-xl">
+      <div className="space-y-4">
+        <div className="bg-secondary/40 rounded-md p-3 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Total nominal QT</span>
+          <Amount value={qt.nominal} className="text-sm font-semibold" />
+        </div>
+
+        <Select label="Jumlah termin" value={String(numTerms)} onChange={e => handleNumChange(Number(e.target.value))}>
+          {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} termin</option>)}
+        </Select>
+
+        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+          {terms.map((t, i) => (
+            <div key={i} className="p-3 rounded-md border border-border bg-white">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Termin {i+1}</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-3">
+                  <Input
+                    label="Label"
+                    placeholder={`${qt.title} — Termin ${i+1} dari ${numTerms}`}
+                    value={t.label}
+                    onChange={e => setTerm(i, 'label', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-muted-foreground">Nominal *</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleMode(i)}
+                      className="text-[10px] px-2 py-0.5 rounded border border-rok-300 bg-rok-50 text-rok-700 hover:bg-rok-100 font-medium transition-colors"
+                    >
+                      {t.mode === 'rp' ? 'Ganti ke %' : 'Ganti ke Rp'}
+                    </button>
+                  </div>
+                  {t.mode === 'rp' ? (
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-rok-400"
+                      placeholder="Nominal (Rp)"
+                      value={t.nominal}
+                      onChange={e => setTerm(i, 'nominal', e.target.value)}
+                    />
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0" max="100" step="0.5"
+                          className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-rok-400"
+                          placeholder="Persentase (%)"
+                          value={t.pct}
+                          onChange={e => setTerm(i, 'pct', e.target.value)}
+                        />
+                        <span className="text-sm font-medium text-muted-foreground">%</span>
+                      </div>
+                      {t.nominal && (
+                        <p className="text-[11px] text-rok-700 font-medium">= {formatRp(parseFloat(t.nominal))}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="col-span-2">
+                  <Input label="Est. Tanggal Invoice *" type="date" value={t.est_date} onChange={e => setTerm(i, 'est_date', e.target.value)} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Validation */}
+        <div className={`rounded-md p-2.5 text-xs flex items-center justify-between ${Math.abs(selisih) < 1 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          <span>Total termin: <strong className="num">{formatRp(totalTermin)}</strong></span>
+          {Math.abs(selisih) >= 1 && <span>Selisih: <strong>{formatRp(Math.abs(selisih))}</strong> {selisih > 0 ? '(kurang)' : '(lebih)'}</span>}
+          {Math.abs(selisih) < 1 && <span>✓ Total sesuai nominal QT</span>}
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose}>Batal</Button>
+          <Button
+            onClick={handleSubmit}
+            loading={createTerms.isPending}
+            disabled={Math.abs(selisih) >= 1 || terms.some(t => !t.nominal || !t.est_date)}
+          >
+            Simpan Termin
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Edit QT Modal ───────────────────────────────────────────
+function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
+  const [form, setForm] = useState({ title: qt.title, nominal: String(qt.nominal), notes: '' })
+  const { data: existingTerms } = useInvoiceTerms(qt.id)
+  const deleteTermMutation = useDeleteInvoiceTerm()
+  const createTermsMutation = useCreateInvoiceTerms()
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  // New terms to add
+  const [newTerms, setNewTerms] = useState<{ label: string; nominal: string; est_date: string; mode: 'rp'|'pct'; pct: string }[]>([])
+  const [showAddTerms, setShowAddTerms] = useState(false)
+
+  const nominalQT = parseFloat(form.nominal) || qt.nominal
+  const existingTotal = (existingTerms ?? []).reduce((s, t) => s + t.nominal, 0)
+  const newTermsTotal = newTerms.reduce((s, t) => s + (parseFloat(t.nominal) || 0), 0)
+  const allTotal = existingTotal + newTermsTotal
+  const selisih = nominalQT - allTotal
+  const isBalanced = Math.abs(selisih) < 1
+
+  const addNewTerm = () => {
+    const remaining = nominalQT - existingTotal - newTermsTotal
+    setNewTerms(prev => [...prev, {
+      label: '',
+      nominal: remaining > 0 ? String(Math.round(remaining)) : '',
+      est_date: '',
+      mode: 'rp',
+      pct: '',
+    }])
+  }
+
+  const setNewTerm = (i: number, k: string, v: string) => {
+    setNewTerms(prev => prev.map((t, idx) => {
+      if (idx !== i) return t
+      const updated = { ...t, [k]: v }
+      if (k === 'pct') {
+        const pctVal = parseFloat(v) || 0
+        updated.nominal = pctVal > 0 ? String(Math.round(nominalQT * pctVal / 100)) : ''
+      }
+      return updated
+    }))
+  }
+
+  const toggleNewTermMode = (i: number) => {
+    setNewTerms(prev => prev.map((t, idx) => {
+      if (idx !== i) return t
+      const newMode = t.mode === 'rp' ? 'pct' : 'rp'
+      return { ...t, mode: newMode, pct: newMode === 'pct' && t.nominal ? String(Math.round(parseFloat(t.nominal) / nominalQT * 100)) : t.pct }
+    }))
+  }
+
+  const removeNewTerm = (i: number) => setNewTerms(prev => prev.filter((_, idx) => idx !== i))
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.nominal) return
+    await onSubmit({ title: form.title, nominal: parseFloat(form.nominal), notes: form.notes || undefined })
+    if (newTerms.length > 0 && newTerms.every(t => t.nominal && t.est_date)) {
+      const existingCount = existingTerms?.length ?? 0
+      const totalTerms = existingCount + newTerms.length
+      await createTermsMutation.mutateAsync({
+        quotation_id: qt.id,
+        total_terms: totalTerms,
+        terms: newTerms.map((t, i) => ({
+          term_number: existingCount + i + 1,
+          label: t.label || `Termin ${existingCount + i + 1}`,
+          nominal: parseFloat(t.nominal),
+          est_date: t.est_date,
+        })),
+      })
+    }
+  }
+
+  const canDeleteTerm = (status: string) => ['not_yet', 'need_created'].includes(status)
+  const isSaving = loading || createTermsMutation.isPending || deleteTermMutation.isPending
+
+  return (
+    <Modal open title={`Edit QT — ${qt.qt_number}`} onClose={onClose} width="max-w-xl">
+      <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+        {/* Edit Info */}
+        <div className="rounded-lg border border-border bg-white p-4 space-y-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Info Quotation</p>
+          <div className="text-xs text-muted-foreground bg-secondary/40 rounded p-2">
+            Client: <strong>{qt.client_name}</strong> · Service: <strong>{qt.service_code}</strong>
+          </div>
+          <Input label="Judul *" value={form.title} onChange={e => set('title', e.target.value)} />
+          <Input label="Nominal (Rp) *" type="number" value={form.nominal} onChange={e => set('nominal', e.target.value)} />
+          <Input label="Notes (opsional)" value={form.notes} onChange={e => set('notes', e.target.value)} />
+        </div>
+
+        {/* Existing Terms */}
+        {existingTerms && existingTerms.length > 0 && (
+          <div className="rounded-lg border border-border bg-white p-4 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Termin yang Ada</p>
+            <p className="text-[11px] text-muted-foreground">Status waiting/paid/overdue tidak bisa dihapus.</p>
+            {existingTerms.map(t => (
+              <div key={t.id} className="flex items-center justify-between p-2.5 rounded-md border border-border bg-secondary/20">
+                <div>
+                  <p className="text-xs font-medium">{t.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{formatRp(t.nominal)} · Est: {formatDate(t.est_date)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={t.status} type="term" />
+                  {canDeleteTerm(t.status) && (
+                    <button onClick={async () => { if (confirm('Hapus termin ini?')) await deleteTermMutation.mutateAsync(t.id) }}
+                      className="text-red-400 hover:text-red-600" disabled={deleteTermMutation.isPending}>
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add New Terms */}
+        <div className="rounded-lg border border-border bg-white p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tambah Termin Baru</p>
+            <button onClick={addNewTerm} className="text-xs text-rok-600 hover:underline font-medium flex items-center gap-1">
+              <Plus size={11} /> Tambah Termin
+            </button>
+          </div>
+
+          {newTerms.length === 0 && (
+            <p className="text-[11px] text-muted-foreground">Klik "Tambah Termin" untuk menambah termin baru.</p>
+          )}
+
+          {newTerms.map((t, i) => (
+            <div key={i} className="p-3 rounded-md border border-rok-200 bg-rok-50/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-rok-700">Termin Baru {i + 1}</p>
+                <button onClick={() => removeNewTerm(i)} className="text-red-400 hover:text-red-600"><X size={13} /></button>
+              </div>
+              <Input label="Label" placeholder={`Termin ${(existingTerms?.length ?? 0) + i + 1}`}
+                value={t.label} onChange={e => setNewTerm(i, 'label', e.target.value)} />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-muted-foreground">Nominal *</span>
+                    <button type="button" onClick={() => toggleNewTermMode(i)}
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-rok-300 bg-rok-50 text-rok-700 hover:bg-rok-100">
+                      {t.mode === 'rp' ? '% mode' : 'Rp mode'}
+                    </button>
+                  </div>
+                  {t.mode === 'rp' ? (
+                    <input type="number" className="w-full px-2 py-1.5 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-rok-400"
+                      placeholder="Nominal Rp" value={t.nominal} onChange={e => setNewTerm(i, 'nominal', e.target.value)} />
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1">
+                        <input type="number" min="0" max="100" step="0.5"
+                          className="w-full px-2 py-1.5 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-rok-400"
+                          placeholder="%" value={t.pct} onChange={e => setNewTerm(i, 'pct', e.target.value)} />
+                        <span className="text-xs text-muted-foreground">%</span>
+                      </div>
+                      {t.nominal && <p className="text-[10px] text-rok-700">= {formatRp(parseFloat(t.nominal))}</p>}
+                    </div>
+                  )}
+                </div>
+                <Input label="Est. Tanggal *" type="date" value={t.est_date} onChange={e => setNewTerm(i, 'est_date', e.target.value)} />
+              </div>
+            </div>
+          ))}
+
+          {/* Balance indicator */}
+          {(existingTerms?.length ?? 0) + newTerms.length > 0 && (
+            <div className={`rounded-md p-2.5 text-xs flex items-center justify-between ${isBalanced ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+              <span>Total termin: <strong>{formatRp(allTotal)}</strong> / QT: <strong>{formatRp(nominalQT)}</strong></span>
+              {!isBalanced && <span>Selisih: {formatRp(Math.abs(selisih))} {selisih > 0 ? '(kurang)' : '(lebih)'}</span>}
+              {isBalanced && <span>✓ Seimbang</span>}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 justify-end sticky bottom-0 bg-background pt-2 pb-1">
+          <Button variant="outline" onClick={onClose}>Batal</Button>
+          <Button onClick={handleSubmit} loading={isSaving}
+            disabled={!form.title || !form.nominal || (newTerms.length > 0 && newTerms.some(t => !t.nominal || !t.est_date))}>
+            Simpan Perubahan
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}

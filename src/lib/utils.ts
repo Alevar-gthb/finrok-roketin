@@ -1,0 +1,89 @@
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+import { format, parseISO } from 'date-fns'
+import { id } from 'date-fns/locale'
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+/** Format angka ke Rupiah: Rp 42.000.000 */
+export function formatRp(value: number | null | undefined, opts?: { short?: boolean }): string {
+  if (value == null) return 'Rp 0'
+  if (opts?.short && value >= 1_000_000_000) return `Rp ${(value / 1_000_000_000).toFixed(1)}M`
+  if (opts?.short && value >= 1_000_000)     return `Rp ${(value / 1_000_000).toFixed(1)}jt`
+  return 'Rp ' + new Intl.NumberFormat('id-ID').format(value)
+}
+
+/** Format tanggal ke DD/MM/YY */
+export function formatDate(date: string | Date | null | undefined, fmt = 'dd/MM/yy'): string {
+  if (!date) return '-'
+  try {
+    const d = typeof date === 'string' ? parseISO(date) : date
+    return format(d, fmt, { locale: id })
+  } catch {
+    return '-'
+  }
+}
+
+/** Format tanggal panjang: 14 Agustus 2025 */
+export function formatDateLong(date: string | Date | null | undefined): string {
+  return formatDate(date, 'd MMMM yyyy')
+}
+
+/** Generate client code dari nama: "PT Kereta Api Indonesia" → "KAI" */
+export function generateClientCode(name: string): string {
+  const letters = name.toUpperCase().replace(/[^A-Z]/g, '')
+  if (!letters) return 'CLT'
+  if (letters.length === 1) return letters + 'XX'
+  if (letters.length === 2) return letters + 'X'
+  if (letters.length === 3) return letters
+  return letters[0] + letters[Math.floor(letters.length / 2)] + letters[letters.length - 1]
+}
+
+/** Build QT number: QT-001_DESIGN-KAI_200125 */
+export function buildQTNumber(seq: number, serviceCode: string, clientCode: string, date: Date): string {
+  const seqStr = seq.toString().padStart(3, '0')
+  const dateStr = format(date, 'ddMMyy')
+  return `QT-${seqStr}_${serviceCode.toUpperCase()}-${clientCode.toUpperCase()}_${dateStr}`
+}
+
+/** Build INV number: INV-001_DESIGN-KAI_T1_200125 */
+export function buildINVNumber(seq: number, serviceCode: string, clientCode: string, termNum: number, date: Date): string {
+  const seqStr = seq.toString().padStart(3, '0')
+  const dateStr = format(date, 'ddMMyy')
+  return `INV-${seqStr}_${serviceCode.toUpperCase()}-${clientCode.toUpperCase()}_T${termNum}_${dateStr}`
+}
+
+/** Calculate PPN */
+export function calcTax(nominal: number, taxType: 'none' | 'ppn11' | 'ppn12') {
+  if (taxType === 'none') return { subtotal: nominal, taxableBase: 0, taxAmount: 0, grandTotal: nominal }
+  if (taxType === 'ppn11') {
+    const taxAmount  = Math.round(nominal * 0.11)
+    const grandTotal = nominal + taxAmount
+    return { subtotal: nominal, taxableBase: nominal, taxAmount, grandTotal }
+  }
+  // ppn12: Metode DPP Nilai Lain — DPP dikurangi agar PPN × 12% = 11% dari nominal
+  // DPP = nominal × (11/12), sehingga DPP × 12% = nominal × 11%
+  const taxAmount   = Math.round(nominal * 0.11)
+  const taxableBase = Math.round(nominal * 11 / 12)
+  const grandTotal  = nominal + taxAmount
+  return { subtotal: nominal, taxableBase, taxAmount, grandTotal }
+}
+
+/** Status label mapping */
+export const QT_STATUS_LABEL: Record<string, string> = {
+  draft: 'Draft', sent: 'Sent', deal: 'Deal', lost: 'Lost',
+}
+export const INV_STATUS_LABEL: Record<string, string> = {
+  not_yet: 'Not Yet', need_created: 'Need Created',
+  waiting: 'Waiting', paid: 'Paid', overdue: 'Overdue',
+}
+export const INV_DOC_STATUS_LABEL: Record<string, string> = {
+  draft: 'Draft', issued: 'Issued', paid: 'Paid', overdue: 'Overdue', void: 'Void',
+}
+
+/** Truncate text */
+export function truncate(str: string, n: number): string {
+  return str.length > n ? str.slice(0, n) + '…' : str
+}
