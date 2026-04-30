@@ -1,4 +1,4 @@
-import { useState, Suspense, lazy, Component, type ReactNode } from 'react'
+import { useState, useEffect, Suspense, lazy, Component, type ReactNode } from 'react'
 import { Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   useAllInvoiceTerms, useInvoices, useInvoice, useGenerateInvoice,
@@ -136,12 +136,13 @@ function InvoiceList() {
   const [search, setSearch] = useState('')
   const [termSearch, setTermSearch] = useState('')
   const [filterStatus, setFilter] = useState('all')
-  const [docSortKey, setDocSortKey] = useState<'inv_number'|'client'|'term_label'|'inv_date'|'due_date'|'grand_total'|'status'>('inv_date')
+  const [docSortKey, setDocSortKey] = useState<'inv_number'|'client'|'term_label'|'inv_date'|'due_date'|'sent_date'|'grand_total'|'status'>('inv_date')
   const [docSortDir, setDocSortDir] = useState<'asc'|'desc'>('desc')
   const [termSortKey, setTermSortKey] = useState<'qt_number'|'client'|'label'|'nominal'|'est_date'|'status'>('est_date')
   const [termSortDir, setTermSortDir] = useState<'asc'|'desc'>('asc')
   const [previewInv, setPreview]  = useState<Invoice | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ inv: Invoice; next: string; label: string } | null>(null)
+  const [sentDate, setSentDate] = useState(new Date().toISOString().split('T')[0])
   const navigate = useNavigate()
   const { selectedCompanyId } = useCompanyStore()
 
@@ -196,6 +197,7 @@ function InvoiceList() {
       case 'term_label': return factor * labelA.localeCompare(labelB)
       case 'inv_date': return factor * (new Date(a.inv_date).getTime() - new Date(b.inv_date).getTime())
       case 'due_date': return factor * (new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+      case 'sent_date': return factor * ((a.issued_at ? new Date(a.issued_at).getTime() : 0) - (b.issued_at ? new Date(b.issued_at).getTime() : 0))
       case 'grand_total': return factor * (a.grand_total - b.grand_total)
       case 'status': return factor * a.status.localeCompare(b.status)
     }
@@ -219,7 +221,11 @@ function InvoiceList() {
 
   const handleStatusChange = async () => {
     if (!confirmAction) return
-    await updateStatus.mutateAsync({ id: confirmAction.inv.id, status: confirmAction.next as any })
+    await updateStatus.mutateAsync({
+      id: confirmAction.inv.id,
+      status: confirmAction.next as any,
+      sent_date: confirmAction.next === 'issued' ? sentDate : undefined,
+    })
     setConfirmAction(null)
   }
 
@@ -251,7 +257,7 @@ function InvoiceList() {
                 <table className="w-full min-w-[1180px] text-sm">
                   <thead>
                     <tr className="bg-secondary/40 border-b border-border">
-                      {(['INV Number','Client','Termin','Tgl Invoice','Due Date','Grand Total','Status','Aksi'] as const).map((h, idx, arr) => (
+                      {(['INV Number','Client','Termin','Tgl Invoice','Due Date','Sent Date','Grand Total','Status','Aksi'] as const).map((h, idx, arr) => (
                         <th
                           key={h}
                           className={`px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap ${
@@ -261,7 +267,7 @@ function InvoiceList() {
                           }${
                             h === 'Termin' ? 'min-w-[220px] ' : ''
                           }${
-                            h === 'Tgl Invoice' || h === 'Due Date' ? 'min-w-[110px] ' : ''
+                            h === 'Tgl Invoice' || h === 'Due Date' || h === 'Sent Date' ? 'min-w-[110px] ' : ''
                           }${
                             h === 'Grand Total' ? 'min-w-[140px] ' : ''
                           }${
@@ -278,6 +284,7 @@ function InvoiceList() {
                               Termin: 'term_label',
                               'Tgl Invoice': 'inv_date',
                               'Due Date': 'due_date',
+                              'Sent Date': 'sent_date',
                               'Grand Total': 'grand_total',
                               Status: 'status',
                             } as const
@@ -294,9 +301,10 @@ function InvoiceList() {
                                 Termin: 'term_label',
                                 'Tgl Invoice': 'inv_date',
                                 'Due Date': 'due_date',
+                                'Sent Date': 'sent_date',
                                 'Grand Total': 'grand_total',
                                 Status: 'status',
-                              }[h as 'INV Number'|'Client'|'Termin'|'Tgl Invoice'|'Due Date'|'Grand Total'|'Status']} />
+                              }[h as 'INV Number'|'Client'|'Termin'|'Tgl Invoice'|'Due Date'|'Sent Date'|'Grand Total'|'Status']} />
                             )}
                           </span>
                         </th>
@@ -315,6 +323,7 @@ function InvoiceList() {
                           <td className="px-4 py-2.5 text-xs min-w-[220px] max-w-[220px] truncate" title={inv.invoice_term?.label ?? undefined}>{inv.invoice_term?.label ?? '—'}</td>
                           <td className="px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px]">{formatDate(inv.inv_date)}</td>
                           <td className={`px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px] ${inv.status==='overdue'?'text-red-600 font-medium':''}`}>{formatDate(inv.due_date)}</td>
+                          <td className="px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px]">{inv.issued_at ? formatDate(inv.issued_at) : '—'}</td>
                           <td className="px-4 py-2.5 text-right whitespace-nowrap min-w-[140px]"><Amount value={inv.grand_total} className="text-xs" /></td>
                           <td className="px-4 py-2.5 whitespace-nowrap min-w-[110px]"><StatusBadge status={inv.status} type="invoice" /></td>
                           <td
@@ -324,7 +333,15 @@ function InvoiceList() {
                               <button type="button" onClick={() => setPreview(inv)} className="text-[11px] text-rok-600 hover:underline font-medium flex items-center gap-1 shrink-0"><Eye size={11} /> Preview</button>
                               {inv.status==='draft' && <button type="button" onClick={() => navigate(`/invoices/generate/${inv.invoice_term_id}?edit=${inv.id}`)} className="text-[11px] text-amber-700 hover:underline font-medium flex items-center gap-1 shrink-0"><RefreshCw size={11} /> Edit</button>}
                               {actions.map(a => (
-                                <button type="button" key={a.next} onClick={() => setConfirmAction({ inv, next: a.next, label: a.label })} className={`text-[11px] hover:underline font-medium flex items-center gap-1 shrink-0 ${a.color}`}>
+                                <button
+                                  type="button"
+                                  key={a.next}
+                                  onClick={() => {
+                                    if (a.next === 'issued') setSentDate(new Date().toISOString().split('T')[0])
+                                    setConfirmAction({ inv, next: a.next, label: a.label })
+                                  }}
+                                  className={`text-[11px] hover:underline font-medium flex items-center gap-1 shrink-0 ${a.color}`}
+                                >
                                   {a.next==='issued' ? <SendHorizonal size={11} /> : a.next==='paid' ? <CheckCircle size={11} /> : <XCircle size={11} />}
                                   {a.label}
                                 </button>
@@ -449,6 +466,14 @@ function InvoiceList() {
                 ? `Void invoice ${confirmAction.inv.inv_number}? Tindakan ini tidak bisa dibatalkan.`
                 : `${confirmAction.label} invoice ${confirmAction.inv.inv_number}?`}
             </p>
+            {confirmAction.next === 'issued' && (
+              <Input
+                label="Sent Date *"
+                type="date"
+                value={sentDate}
+                onChange={e => setSentDate(e.target.value)}
+              />
+            )}
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setConfirmAction(null)}>Batal</Button>
               <Button
@@ -482,9 +507,18 @@ function GenerateInvoice() {
   const [form, setForm] = useState({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none' as TaxType, notes_template_id: '', custom_notes: '' })
   const [done, setDone] = useState<{ inv_number: string; grand_total: number; id: string } | null>(null)
   const [pdfErr, setPdfErr] = useState<string | null>(null)
+  const [taxInitialized, setTaxInitialized] = useState(false)
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
   const tax = calcTax(term?.nominal ?? 0, form.tax_type)
   const dueDate = (() => { const d = new Date(form.inv_date); d.setDate(d.getDate() + parseInt(form.due_days||'0')); return d })()
+
+  useEffect(() => {
+    if (!term || taxInitialized) return
+    const qNotes = term.quotation?.notes?.toLowerCase?.() ?? ''
+    const inferredTax: TaxType = qNotes.includes('tax: ppn 11%') ? 'ppn11' : 'none'
+    setForm(f => ({ ...f, tax_type: inferredTax }))
+    setTaxInitialized(true)
+  }, [term, taxInitialized])
   const handleGenerate = async () => {
     if (!term||!qt||!cli||!svc) return
     setPdfErr(null)

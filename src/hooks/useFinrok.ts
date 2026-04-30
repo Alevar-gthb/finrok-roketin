@@ -477,9 +477,13 @@ export const useGenerateInvoice = () => {
 export const useUpdateInvoiceStatus = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: 'draft' | 'issued' | 'paid' | 'void' }) => {
+    mutationFn: async ({ id, status, sent_date }: { id: string; status: 'draft' | 'issued' | 'paid' | 'void'; sent_date?: string }) => {
       const updates: Record<string, unknown> = { status }
-      if (status === 'issued') updates.issued_at = new Date().toISOString()
+      if (status === 'issued') {
+        updates.issued_at = sent_date
+          ? new Date(`${sent_date}T00:00:00`).toISOString()
+          : new Date().toISOString()
+      }
       const { error } = await supabase.from('invoices').update(updates).eq('id', id)
       if (error) throw error
       const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', id).single()
