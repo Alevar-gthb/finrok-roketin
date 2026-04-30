@@ -1,8 +1,8 @@
-import { useState, useEffect, Suspense, lazy, Component, type ReactNode } from 'react'
+import { useState, useEffect, useRef, Suspense, lazy, Component, type ReactNode } from 'react'
 import { Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   useAllInvoiceTerms, useInvoices, useInvoice, useGenerateInvoice,
-  useNotesTemplates, useUpdateInvoiceStatus, useUpdateInvoicePdfUrl,
+  useNotesTemplates, useUpdateInvoiceStatus, useUpdateInvoicePdfUrl, useMarkPaid,
 } from '@/hooks/useFinrok'
 import {
   PageHeader, StatusBadge, Button, Input, Select, Textarea,
@@ -10,7 +10,7 @@ import {
 } from '@/components/shared'
 import { formatRp, formatDate, calcTax } from '@/lib/utils'
 import type { TaxType, Invoice } from '@/types/database'
-import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal, ArrowUpDown, ArrowUp, ArrowDown, CreditCard, Paperclip, X } from 'lucide-react'
 import { useCompanyStore } from '@/store/useCompanyStore'
 import { supabase } from '@/lib/supabase'
 
@@ -143,6 +143,18 @@ function InvoiceList() {
   const [termSortDir, setTermSortDir] = useState<'asc'|'desc'>('asc')
   const [previewInv, setPreview]  = useState<Invoice | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ inv: Invoice; next: string; label: string } | null>(null)
+  const [payModal, setPayModal] = useState<Invoice | null>(null)
+  const [payForm, setPayForm] = useState({
+    pay_date: new Date().toISOString().split('T')[0],
+    method: 'transfer',
+    reference: '',
+    bank_name: '',
+    notes: '',
+  })
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
   const [sentDate, setSentDate] = useState(new Date().toISOString().split('T')[0])
   const navigate = useNavigate()
   const { selectedCompanyId } = useCompanyStore()
@@ -150,6 +162,7 @@ function InvoiceList() {
   const { data: invoices, isLoading: loadingInv }  = useInvoices(filterStatus !== 'all' ? { status: filterStatus, companyId: selectedCompanyId } : { companyId: selectedCompanyId })
   const { data: terms,    isLoading: loadingTerms } = useAllInvoiceTerms({ companyId: selectedCompanyId })
   const updateStatus = useUpdateInvoiceStatus()
+  const markPaid = useMarkPaid()
 
   const filteredInv = invoices?.filter(inv => {
     const s = search.toLowerCase()
@@ -228,6 +241,49 @@ function InvoiceList() {
       sent_date: confirmAction.next === 'issued' ? sentDate : undefined,
     })
     setConfirmAction(null)
+  }
+
+  const setPay = (k: string, v: string) => setPayForm(f => ({ ...f, [k]: v }))
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    setUploadError('')
+    if (!file) return
+    if (file.size > 2 * 1024 * 1024) { setUploadError('Ukuran file maks 2MB'); return }
+    const allowed = ['image/jpeg','image/png','image/jpg','application/pdf']
+    if (!allowed.includes(file.type)) { setUploadError('Format: JPG, PNG, atau PDF'); return }
+    setReceiptFile(file)
+  }
+  const handlePay = async () => {
+    if (!payModal) return
+    setUploading(true)
+    let receipt_url: string | undefined
+    try {
+      if (receiptFile) {
+        const ext = receiptFile.name.split('.').pop()
+        const path = `receipts/${payModal.id}_${Date.now()}.${ext}`
+        const { data: up, error: upErr } = await supabase.storage.from('receipts').upload(path, receiptFile, { upsert: true })
+        if (upErr) throw upErr
+        const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(up.path)
+        receipt_url = urlData.publicUrl
+      }
+      await markPaid.mutateAsync({
+        invoice_id: payModal.id,
+        pay_date: payForm.pay_date,
+        amount: payModal.grand_total,
+        method: payForm.method,
+        reference: payForm.reference || undefined,
+        bank_name: payForm.bank_name || undefined,
+        notes: payForm.notes || undefined,
+        receipt_url,
+      })
+      setPayModal(null)
+      setReceiptFile(null)
+      setPayForm({ pay_date: new Date().toISOString().split('T')[0], method: 'transfer', reference: '', bank_name: '', notes: '' })
+    } catch (err: any) {
+      setUploadError(err.message ?? 'Upload gagal')
+    } finally {
+      setUploading(false)
+    }
   }
 
   useEffect(() => {
@@ -345,6 +401,14 @@ function InvoiceList() {
                                   type="button"
                                   key={a.next}
                                   onClick={() => {
+                                    if (a.next === 'paid') {
+                                      setUploadError('')
+                                      setReceiptFile(null)
+                                      if (fileRef.current) fileRef.current.value = ''
+                                      setPayForm({ pay_date: new Date().toISOString().split('T')[0], method: 'transfer', reference: '', bank_name: '', notes: '' })
+                                      setPayModal(inv)
+                                      return
+                                    }
                                     if (a.next === 'issued') setSentDate(new Date().toISOString().split('T')[0])
                                     setConfirmAction({ inv, next: a.next, label: a.label })
                                   }}
@@ -493,6 +557,57 @@ function InvoiceList() {
               </Button>
             </div>
             {updateStatus.isError && <p className="text-xs text-destructive">{String(updateStatus.error)}</p>}
+          </div>
+        </Modal>
+      )}
+
+      {payModal && (
+        <Modal open title={`Konfirmasi Pembayaran — ${payModal.inv_number}`} onClose={() => { setPayModal(null); setReceiptFile(null) }} width="max-w-md">
+          <div className="space-y-4">
+            <div className="bg-green-50 border border-green-200 rounded-md p-3 flex justify-between text-sm">
+              <span className="text-green-700">Grand Total</span>
+              <Amount value={payModal.grand_total} className="font-bold text-green-700" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Tanggal Bayar *" type="date" value={payForm.pay_date} onChange={e => setPay('pay_date', e.target.value)} />
+              <Select label="Metode" value={payForm.method} onChange={e => setPay('method', e.target.value)}>
+                <option value="transfer">Transfer Bank</option>
+                <option value="cash">Cash</option>
+                <option value="giro">Giro</option>
+                <option value="other">Lainnya</option>
+              </Select>
+            </div>
+            <Input label="Nomor Referensi / Bukti Transfer" placeholder="REF/TRF/..." value={payForm.reference} onChange={e => setPay('reference', e.target.value)} />
+            <Input label="Bank Pengirim" placeholder="BCA, Mandiri..." value={payForm.bank_name} onChange={e => setPay('bank_name', e.target.value)} />
+            <Input label="Catatan (opsional)" value={payForm.notes} onChange={e => setPay('notes', e.target.value)} />
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Bukti Transfer (opsional) — JPG, PNG, atau PDF, maks 2MB</label>
+              {!receiptFile ? (
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full border-2 border-dashed border-border rounded-lg p-4 text-xs text-muted-foreground hover:border-rok-400 hover:text-rok-600 transition-colors flex flex-col items-center gap-1"
+                >
+                  <Paperclip size={16} />
+                  <span>Klik untuk upload bukti transfer</span>
+                </button>
+              ) : (
+                <div className="flex items-center justify-between bg-secondary/40 rounded-lg px-3 py-2 text-xs">
+                  <span className="truncate text-slate-700 font-medium">{receiptFile.name}</span>
+                  <button onClick={() => { setReceiptFile(null); if (fileRef.current) fileRef.current.value = '' }} className="text-muted-foreground hover:text-destructive ml-2">
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
+              <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" className="hidden" onChange={handleFileChange} />
+              {uploadError && <p className="text-xs text-destructive mt-1">{uploadError}</p>}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => { setPayModal(null); setReceiptFile(null) }}>Batal</Button>
+              <Button onClick={handlePay} loading={uploading || markPaid.isPending} disabled={!payForm.pay_date}>
+                <CreditCard size={13} /> Konfirmasi Lunas
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
