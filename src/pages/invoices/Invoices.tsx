@@ -182,15 +182,29 @@ function InvoiceList() {
           {loadingInv ? <LoadingSpinner /> : filteredInv.length === 0 ? <EmptyState title="Belum ada invoice" description="Generate invoice dari termin yang sudah siap." /> : (
             <div className="rounded-lg border border-border bg-white overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[1400px] text-sm">
                   <thead>
                     <tr className="bg-secondary/40 border-b border-border">
                       {(['INV Number','QT Number','Client','Termin','Tgl Invoice','Due Date','Grand Total','Status','Aksi'] as const).map((h, idx, arr) => (
                         <th
                           key={h}
                           className={`px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap ${
+                            h === 'INV Number' ? 'min-w-[220px] ' : ''
+                          }${
+                            h === 'QT Number' ? 'min-w-[210px] ' : ''
+                          }${
+                            h === 'Client' ? 'min-w-[170px] ' : ''
+                          }${
+                            h === 'Termin' ? 'min-w-[220px] ' : ''
+                          }${
+                            h === 'Tgl Invoice' || h === 'Due Date' ? 'min-w-[110px] ' : ''
+                          }${
+                            h === 'Grand Total' ? 'min-w-[140px] ' : ''
+                          }${
+                            h === 'Status' ? 'min-w-[110px] ' : ''
+                          }${
                             idx === arr.length - 1
-                              ? 'sticky right-0 z-20 bg-secondary/40 border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
+                              ? 'sticky right-0 z-20 min-w-[260px] bg-secondary/40 border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
                           }`}
                         >
@@ -206,18 +220,18 @@ function InvoiceList() {
                       const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-secondary/10'
                       return (
                         <tr key={inv.id} className={`group border-b border-border last:border-0 hover:bg-rok-50/30 ${rowBg}`}>
-                          <td className="px-4 py-2.5 font-mono text-xs text-rok-700 font-medium max-w-[200px] truncate" title={inv.inv_number}>{inv.inv_number}</td>
-                          <td className="px-4 py-2.5 font-mono text-xs max-w-[200px] truncate" title={qt?.qt_number ?? undefined}>{qt?.qt_number ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-xs max-w-[140px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-xs max-w-[160px] truncate" title={inv.invoice_term?.label ?? undefined}>{inv.invoice_term?.label ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-xs whitespace-nowrap">{formatDate(inv.inv_date)}</td>
-                          <td className={`px-4 py-2.5 text-xs whitespace-nowrap ${inv.status==='overdue'?'text-red-600 font-medium':''}`}>{formatDate(inv.due_date)}</td>
-                          <td className="px-4 py-2.5 text-right whitespace-nowrap"><Amount value={inv.grand_total} className="text-xs" /></td>
-                          <td className="px-4 py-2.5 whitespace-nowrap"><StatusBadge status={inv.status} type="invoice" /></td>
+                          <td className="px-4 py-2.5 font-mono text-xs text-rok-700 font-medium min-w-[220px] max-w-[220px] truncate" title={inv.inv_number}>{inv.inv_number}</td>
+                          <td className="px-4 py-2.5 font-mono text-xs min-w-[210px] max-w-[210px] truncate" title={qt?.qt_number ?? undefined}>{qt?.qt_number ?? '—'}</td>
+                          <td className="px-4 py-2.5 text-xs min-w-[170px] max-w-[170px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
+                          <td className="px-4 py-2.5 text-xs min-w-[220px] max-w-[220px] truncate" title={inv.invoice_term?.label ?? undefined}>{inv.invoice_term?.label ?? '—'}</td>
+                          <td className="px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px]">{formatDate(inv.inv_date)}</td>
+                          <td className={`px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px] ${inv.status==='overdue'?'text-red-600 font-medium':''}`}>{formatDate(inv.due_date)}</td>
+                          <td className="px-4 py-2.5 text-right whitespace-nowrap min-w-[140px]"><Amount value={inv.grand_total} className="text-xs" /></td>
+                          <td className="px-4 py-2.5 whitespace-nowrap min-w-[110px]"><StatusBadge status={inv.status} type="invoice" /></td>
                           <td
-                            className={`px-4 py-2.5 sticky right-0 z-10 min-w-[220px] border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] ${rowBg} group-hover:bg-rok-50/30`}
+                            className={`px-4 py-2.5 sticky right-0 z-10 min-w-[260px] border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] ${rowBg} group-hover:bg-rok-50/30`}
                           >
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-nowrap whitespace-nowrap">
                               <button type="button" onClick={() => setPreview(inv)} className="text-[11px] text-rok-600 hover:underline font-medium flex items-center gap-1 shrink-0"><Eye size={11} /> Preview</button>
                               {inv.status==='draft' && <button type="button" onClick={() => navigate(`/invoices/generate/${inv.invoice_term_id}?edit=${inv.id}`)} className="text-[11px] text-amber-700 hover:underline font-medium flex items-center gap-1 shrink-0"><RefreshCw size={11} /> Edit</button>}
                               {actions.map(a => (
@@ -242,15 +256,27 @@ function InvoiceList() {
           {loadingTerms ? <LoadingSpinner /> : pendingTerms.length===0 ? <EmptyState title="Semua termin sudah digenerate" /> : (
             <div className="rounded-lg border border-border bg-white overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[1180px] text-sm">
                   <thead>
                     <tr className="bg-secondary/40 border-b border-border">
                       {(['QT Number','Client','Label Termin','Nominal','Est. Tanggal','Status','Aksi'] as const).map((h, idx, arr) => (
                         <th
                           key={h}
                           className={`px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap ${
+                            h === 'QT Number' ? 'min-w-[210px] ' : ''
+                          }${
+                            h === 'Client' ? 'min-w-[170px] ' : ''
+                          }${
+                            h === 'Label Termin' ? 'min-w-[220px] ' : ''
+                          }${
+                            h === 'Nominal' ? 'min-w-[140px] ' : ''
+                          }${
+                            h === 'Est. Tanggal' ? 'min-w-[120px] ' : ''
+                          }${
+                            h === 'Status' ? 'min-w-[120px] ' : ''
+                          }${
                             idx === arr.length - 1
-                              ? 'sticky right-0 z-20 bg-secondary/40 border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
+                              ? 'sticky right-0 z-20 min-w-[140px] bg-secondary/40 border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
                           }`}
                         >
@@ -265,13 +291,13 @@ function InvoiceList() {
                       const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-secondary/10'
                       return (
                         <tr key={term.id} className={`group border-b border-border last:border-0 hover:bg-rok-50/30 ${rowBg}`}>
-                          <td className="px-4 py-2.5 font-mono text-xs text-rok-700 font-medium max-w-[200px] truncate" title={qt?.qt_number ?? undefined}>{qt?.qt_number ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-xs max-w-[160px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-xs max-w-[200px] truncate" title={term.label}>{term.label}</td>
-                          <td className="px-4 py-2.5 text-right whitespace-nowrap"><Amount value={term.nominal} className="text-xs" /></td>
-                          <td className={`px-4 py-2.5 text-xs whitespace-nowrap ${term.status==='need_created'?'text-amber-600 font-medium':'text-muted-foreground'}`}>{formatDate(term.est_date)}</td>
-                          <td className="px-4 py-2.5 whitespace-nowrap"><StatusBadge status={term.status} type="term" /></td>
-                          <td className={`px-4 py-2.5 sticky right-0 z-10 min-w-[140px] border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] ${rowBg} group-hover:bg-rok-50/30`}>
+                          <td className="px-4 py-2.5 font-mono text-xs text-rok-700 font-medium min-w-[210px] max-w-[210px] truncate" title={qt?.qt_number ?? undefined}>{qt?.qt_number ?? '—'}</td>
+                          <td className="px-4 py-2.5 text-xs min-w-[170px] max-w-[170px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
+                          <td className="px-4 py-2.5 text-xs min-w-[220px] max-w-[220px] truncate" title={term.label}>{term.label}</td>
+                          <td className="px-4 py-2.5 text-right whitespace-nowrap min-w-[140px]"><Amount value={term.nominal} className="text-xs" /></td>
+                          <td className={`px-4 py-2.5 text-xs whitespace-nowrap min-w-[120px] ${term.status==='need_created'?'text-amber-600 font-medium':'text-muted-foreground'}`}>{formatDate(term.est_date)}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap min-w-[120px]"><StatusBadge status={term.status} type="term" /></td>
+                          <td className={`px-4 py-2.5 sticky right-0 z-10 min-w-[140px] border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] ${rowBg} group-hover:bg-rok-50/30 whitespace-nowrap`}>
                             <Button size="sm" onClick={() => navigate(`/invoices/generate/${term.id}`)}><FileText size={12} /> Generate</Button>
                           </td>
                         </tr>
