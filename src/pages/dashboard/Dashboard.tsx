@@ -1,8 +1,9 @@
+import { useEffect, useRef } from 'react'
 import { useDashboard, useRefreshOverdue, useAllInvoiceTerms, useInvoices } from '@/hooks/useFinrok'
-import { StatCard, PageHeader, LoadingSpinner, StatusBadge, Button, Amount } from '@/components/shared'
+import { StatCard, PageHeader, LoadingSpinner, StatusBadge, Amount } from '@/components/shared'
 import { formatRp, formatDate } from '@/lib/utils'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { RefreshCw, TrendingUp, FileText, Clock, AlertCircle } from 'lucide-react'
+import { TrendingUp, FileText, Clock, AlertCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useCompanyStore } from '@/store/useCompanyStore'
 
@@ -10,11 +11,19 @@ const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov
 
 export default function Dashboard() {
   const { selectedCompanyId } = useCompanyStore()
+  const lastRefreshedCompany = useRef<string | null>(null)
   const { data, isLoading } = useDashboard(selectedCompanyId)
-  const { mutate: refreshOverdue, isPending: refreshing } = useRefreshOverdue()
+  const { mutate: refreshOverdue } = useRefreshOverdue()
   const { data: needCreated } = useAllInvoiceTerms({ status: 'need_created', companyId: selectedCompanyId })
   const { data: overdueInvoices } = useInvoices({ status: 'overdue', companyId: selectedCompanyId })
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const key = selectedCompanyId ?? '__all__'
+    if (lastRefreshedCompany.current === key) return
+    lastRefreshedCompany.current = key
+    refreshOverdue()
+  }, [selectedCompanyId, refreshOverdue])
 
   if (isLoading) return <LoadingSpinner />
 
@@ -35,12 +44,6 @@ export default function Dashboard() {
       <PageHeader
         title="Dashboard"
         sub={`Update terakhir: ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
-        action={
-          <Button variant="outline" size="sm" onClick={() => refreshOverdue()} loading={refreshing}>
-            <RefreshCw size={13} />
-            Refresh Overdue
-          </Button>
-        }
       />
 
       {/* Summary cards */}

@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { useInvoices, useMarkPaid } from '@/hooks/useFinrok'
+import { useEffect, useState, useRef } from 'react'
+import { useInvoices, useMarkPaid, useRefreshOverdue } from '@/hooks/useFinrok'
 import { supabase } from '@/lib/supabase'
 import { PageHeader, StatusBadge, Button, Input, Select, Modal, EmptyState, LoadingSpinner, Amount } from '@/components/shared'
 import { formatRp, formatDate } from '@/lib/utils'
@@ -9,6 +9,8 @@ import { useCompanyStore } from '@/store/useCompanyStore'
 
 export default function Payments() {
   const { selectedCompanyId } = useCompanyStore()
+  const lastRefreshedCompany = useRef<string | null>(null)
+  const { mutate: refreshOverdue } = useRefreshOverdue()
   // Default: hanya tampilkan issued + overdue
   const { data: invoices, isLoading } = useInvoices({ companyId: selectedCompanyId })
   const markPaid = useMarkPaid()
@@ -24,6 +26,13 @@ export default function Payments() {
   const [uploadError, setUploadError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  useEffect(() => {
+    const key = selectedCompanyId ?? '__all__'
+    if (lastRefreshedCompany.current === key) return
+    lastRefreshedCompany.current = key
+    refreshOverdue()
+  }, [selectedCompanyId, refreshOverdue])
 
   const filtered = (invoices ?? []).filter(inv => {
     const matchStatus =
