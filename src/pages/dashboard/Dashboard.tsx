@@ -31,6 +31,7 @@ export default function Dashboard() {
   const waitingCount = issuedInvoices?.length ?? 0
   const waitingTotal = (issuedInvoices ?? []).reduce((sum, inv) => sum + inv.grand_total, 0)
   const overdueCount = overdueInvoices?.length ?? 0
+  const overdueTotal = (overdueInvoices ?? []).reduce((sum, inv) => sum + inv.grand_total, 0)
 
   // Build chart data: merge monthly income + forecast for all 12 months
   const chartData = MONTHS.map((name, i) => {
@@ -69,8 +70,8 @@ export default function Dashboard() {
         />
         <StatCard
           label="Invoice Overdue"
-          value={overdueCount}
-          sub="Invoice due date terlewati, belum dibayar"
+          value={formatRp(overdueTotal, { short: true })}
+          sub={`${overdueCount} invoice due date terlewati, belum dibayar`}
           accent={overdueCount ? 'red' : 'default'}
           icon={<AlertCircle size={16} />}
         />
