@@ -132,6 +132,7 @@ async function generateAndUploadInvoicePdf(invoice: Invoice) {
 }
 
 function InvoiceList() {
+  const [searchParams] = useSearchParams()
   const [tab, setTab]       = useState<'invoices'|'terms'>('invoices')
   const [search, setSearch] = useState('')
   const [termSearch, setTermSearch] = useState('')
@@ -228,6 +229,13 @@ function InvoiceList() {
     })
     setConfirmAction(null)
   }
+
+  useEffect(() => {
+    const invoiceId = searchParams.get('invoice')
+    if (!invoiceId || !invoices?.length) return
+    const target = invoices.find(inv => inv.id === invoiceId)
+    if (target) setPreview(target)
+  }, [searchParams, invoices])
 
   return (
     <div className="page">

@@ -457,6 +457,7 @@ function UpdateStatusModal({ qt, onClose, onUpdate, loading }: any) {
 type TermEntry = { label: string; nominal: string; est_date: string; mode: 'rp' | 'pct'; pct: string }
 
 function SetupTerminModal({ qt, onClose }: any) {
+  const navigate = useNavigate()
   const { data: existingTerms } = useInvoiceTerms(qt.id)
   const createTerms = useCreateInvoiceTerms()
   const [numTerms, setNumTerms] = useState(1)
@@ -514,6 +515,23 @@ function SetupTerminModal({ qt, onClose }: any) {
               <div>
                 <p className="text-xs font-medium">{t.label}</p>
                 <p className="text-[11px] text-muted-foreground">Est: {formatDate(t.est_date)}</p>
+                {t.invoice && t.invoice.status !== 'void' ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/invoices?invoice=${t.invoice?.id}`)}
+                    className="text-[11px] text-rok-600 hover:underline font-medium mt-0.5"
+                  >
+                    {t.invoice.inv_number}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/invoices/generate/${t.id}`)}
+                    className="text-[11px] text-green-700 hover:underline font-medium mt-0.5"
+                  >
+                    Generate Invoice
+                  </button>
+                )}
               </div>
               <div className="text-right">
                 <Amount value={t.nominal} className="text-xs" />
