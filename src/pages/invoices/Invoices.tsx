@@ -182,16 +182,14 @@ function InvoiceList() {
           {loadingInv ? <LoadingSpinner /> : filteredInv.length === 0 ? <EmptyState title="Belum ada invoice" description="Generate invoice dari termin yang sudah siap." /> : (
             <div className="rounded-lg border border-border bg-white overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1400px] text-sm">
+                <table className="w-full min-w-[1180px] text-sm">
                   <thead>
                     <tr className="bg-secondary/40 border-b border-border">
-                      {(['INV Number','QT Number','Client','Termin','Tgl Invoice','Due Date','Grand Total','Status','Aksi'] as const).map((h, idx, arr) => (
+                      {(['INV Number','Client','Termin','Tgl Invoice','Due Date','Grand Total','Status','Aksi'] as const).map((h, idx, arr) => (
                         <th
                           key={h}
                           className={`px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap ${
                             h === 'INV Number' ? 'min-w-[220px] ' : ''
-                          }${
-                            h === 'QT Number' ? 'min-w-[210px] ' : ''
                           }${
                             h === 'Client' ? 'min-w-[170px] ' : ''
                           }${
@@ -221,7 +219,6 @@ function InvoiceList() {
                       return (
                         <tr key={inv.id} className={`group border-b border-border last:border-0 hover:bg-rok-50/30 ${rowBg}`}>
                           <td className="px-4 py-2.5 font-mono text-xs text-rok-700 font-medium min-w-[220px] max-w-[220px] truncate" title={inv.inv_number}>{inv.inv_number}</td>
-                          <td className="px-4 py-2.5 font-mono text-xs min-w-[210px] max-w-[210px] truncate" title={qt?.qt_number ?? undefined}>{qt?.qt_number ?? '—'}</td>
                           <td className="px-4 py-2.5 text-xs min-w-[170px] max-w-[170px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
                           <td className="px-4 py-2.5 text-xs min-w-[220px] max-w-[220px] truncate" title={inv.invoice_term?.label ?? undefined}>{inv.invoice_term?.label ?? '—'}</td>
                           <td className="px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px]">{formatDate(inv.inv_date)}</td>
