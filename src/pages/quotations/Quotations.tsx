@@ -5,7 +5,7 @@ import { useCompanyStore } from '@/store/useCompanyStore'
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import {
   useQuotationSummaries, useCreateQuotation, useUpdateQTStatus,
-  useUpdateQuotation, useDeleteInvoiceTerm,
+  useUpdateQuotation, useDeleteInvoiceTerm, useUpsertClient,
   useClients, useServices, useInvoiceTerms, useCreateInvoiceTerms,
 } from '@/hooks/useFinrok'
 import {
@@ -258,6 +258,7 @@ function QuotationList() {
 // ─── Create QT Modal ─────────────────────────────────────────
 function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: any) {
   const { selectedCompanyId } = useCompanyStore()
+  const upsertClient = useUpsertClient()
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
     queryFn: getCompanies,
@@ -269,9 +270,13 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
     company_id: '',
     title:      '',
     nominal:    '',
+    tax_type:   'none',
     qt_date:    new Date().toISOString().split('T')[0],
     notes:      '',
   })
+  const [showAddClient, setShowAddClient] = useState(false)
+  const [newClient, setNewClient] = useState({ name: '', code: '' })
+  const [addClientErr, setAddClientErr] = useState('')
 
   // Set default company: ikuti company filter aktif, fallback ke is_default
   useEffect(() => {
@@ -284,17 +289,43 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
   }, [companies, selectedCompanyId])
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const setNew = (k: string, v: string) => setNewClient(c => ({ ...c, [k]: v }))
 
   const selectedClient  = clients.find((c: any) => c.id === form.client_id)
   const selectedService = services.find((s: any) => s.id === form.service_id)
+  const subtotal = parseFloat(form.nominal) || 0
+  const taxAmount = form.tax_type === 'ppn11' ? Math.round(subtotal * 0.11) : 0
+  const grandTotal = subtotal + taxAmount
+
+  const handleAddClient = async () => {
+    const name = newClient.name.trim()
+    const code = newClient.code.trim().toUpperCase()
+    if (!name || !code) {
+      setAddClientErr('Nama client dan kode client wajib diisi.')
+      return
+    }
+    const exists = clients.some((c: any) => (c.code ?? '').toUpperCase() === code)
+    if (exists) {
+      setAddClientErr(`Kode client "${code}" sudah dipakai.`)
+      return
+    }
+    setAddClientErr('')
+    const created = await upsertClient.mutateAsync({ name, code, is_active: true })
+    set('client_id', created.id)
+    setShowAddClient(false)
+    setNewClient({ name: '', code: '' })
+  }
 
   const handleSubmit = () => {
     if (!form.client_id || !form.service_id || !form.title || !form.nominal) return
     onSubmit({
       ...form,
-      nominal:      parseFloat(form.nominal),
+      nominal:      grandTotal,
       client_code:  selectedClient?.code ?? generateClientCode(selectedClient?.name ?? ''),
       service_code: selectedService?.code ?? '',
+      notes:        [form.notes?.trim(), `Tax: ${form.tax_type === 'ppn11' ? 'PPN 11%' : 'Non-PPN'}`, `Subtotal: ${subtotal}`, `Tax Amount: ${taxAmount}`, `Grand Total: ${grandTotal}`]
+        .filter(Boolean)
+        .join('\n'),
     })
   }
 
@@ -317,18 +348,50 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
         </Select>
 
         <div className="grid grid-cols-2 gap-3">
-          <Select label="Client *" value={form.client_id} onChange={e => set('client_id', e.target.value)}>
-            <option value="">Pilih client...</option>
-            {clients.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
+          <div className="space-y-1.5">
+            <Select label="Client *" value={form.client_id} onChange={e => set('client_id', e.target.value)}>
+              <option value="">Pilih client...</option>
+              {clients.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            <button
+              type="button"
+              onClick={() => setShowAddClient(v => !v)}
+              className="text-[11px] text-rok-600 hover:underline"
+            >
+              + Tambah client baru
+            </button>
+          </div>
           <Select label="Service *" value={form.service_id} onChange={e => set('service_id', e.target.value)}>
             <option value="">Pilih service...</option>
             {services.map((s: any) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
           </Select>
         </div>
+        {showAddClient && (
+          <div className="rounded-md border border-rok-200 bg-rok-50/40 p-3 space-y-2">
+            <p className="text-xs font-medium text-rok-700">Tambah Client Baru</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Input label="Nama Client *" placeholder="PT Nama Client" value={newClient.name} onChange={e => setNew('name', e.target.value)} />
+              <Input label="Kode Client *" placeholder="ABC" value={newClient.code} onChange={e => setNew('code', e.target.value.toUpperCase())} />
+            </div>
+            {addClientErr && <p className="text-[11px] text-destructive">{addClientErr}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowAddClient(false); setAddClientErr('') }}>Batal</Button>
+              <Button size="sm" onClick={handleAddClient} loading={upsertClient.isPending}>Simpan Client</Button>
+            </div>
+          </div>
+        )}
         <Input label="Tanggal QT *" type="date" value={form.qt_date} onChange={e => set('qt_date', e.target.value)} />
         <Input label="Judul / Deskripsi Pekerjaan *" placeholder="Pengadaan Tenaga Ahli..." value={form.title} onChange={e => set('title', e.target.value)} />
-        <Input label="Nominal (Rp) *" type="number" placeholder="42000000" value={form.nominal} onChange={e => set('nominal', e.target.value)} />
+        <Input label="Subtotal / DPP (Rp) *" type="number" placeholder="42000000" value={form.nominal} onChange={e => set('nominal', e.target.value)} />
+        <Select label="Tax / PPN" value={form.tax_type} onChange={e => set('tax_type', e.target.value)}>
+          <option value="none">Non-PPN</option>
+          <option value="ppn11">PPN 11%</option>
+        </Select>
+        <div className="rounded-md border border-border bg-secondary/30 p-3 text-xs space-y-1.5">
+          <div className="flex items-center justify-between"><span className="text-muted-foreground">Subtotal</span><span className="font-medium num">{formatRp(subtotal)}</span></div>
+          <div className="flex items-center justify-between"><span className="text-muted-foreground">PPN</span><span className="font-medium num">{formatRp(taxAmount)}</span></div>
+          <div className="border-t border-border pt-1.5 flex items-center justify-between"><span className="font-semibold text-foreground">Grand Total</span><span className="font-semibold text-rok-700 num">{formatRp(grandTotal)}</span></div>
+        </div>
         <Textarea label="Catatan (opsional)" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
 
         {form.client_id && form.service_id && form.nominal && (
