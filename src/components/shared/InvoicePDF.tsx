@@ -32,7 +32,7 @@ interface InvoiceCompany {
   logo_url: string | null
 }
 
-interface InvoiceData {
+export interface InvoiceData {
   company: InvoiceCompany          // ← BARU: dari companies table via quotation
   inv_number: string
   inv_date: string
@@ -48,6 +48,10 @@ interface InvoiceData {
   tax_amount: number
   grand_total: number
   notes: string | null
+  document_title?: string
+  expiration_label?: string
+  expiration_date?: string
+  show_notes?: boolean
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
@@ -153,6 +157,10 @@ function taxLabel(type: 'ppn11' | 'ppn12') {
 export default function InvoicePDF({ data }: { data: InvoiceData }) {
   const { company, tax_type, taxable_base, tax_amount } = data
   const hasTax = tax_type !== 'none' && tax_amount > 0
+  const docTitle = data.document_title ?? 'INVOICE'
+  const expirationLabel = data.expiration_label ?? 'Expiration Date'
+  const expirationDate = data.expiration_date ?? data.due_date
+  const showNotes = data.show_notes ?? true
 
   // Parse notes into numbered lines
   const noteLines = (data.notes ?? '')
@@ -204,11 +212,11 @@ export default function InvoicePDF({ data }: { data: InvoiceData }) {
 
         {/* ── INVOICE TITLE + META ── */}
         <View style={s.titleRow}>
-          <Text style={s.invoiceTitle}>INVOICE</Text>
+          <Text style={s.invoiceTitle}>{docTitle}</Text>
           <View style={s.metaTable}>
             {[
               ['Date', data.inv_date],
-              ['Expiration Date', data.due_date],
+              [expirationLabel, expirationDate],
               ['Invoice #', data.inv_number],
             ].map(([label, value]) => (
               <View key={label} style={s.metaRow}>
@@ -287,7 +295,7 @@ export default function InvoicePDF({ data }: { data: InvoiceData }) {
         </View>
 
         {/* ── NOTES ── */}
-        {noteLines.length > 0 && (
+        {showNotes && noteLines.length > 0 && (
           <View style={s.notesBox}>
             <Text style={s.notesHeader}>TERMS OF SALE AND OTHER COMMENTS</Text>
             {noteLines.map((line, i) => (

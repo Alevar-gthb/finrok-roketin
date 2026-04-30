@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy, Component, type ReactNode } from 'react'
 import { Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   useAllInvoiceTerms, useInvoices, useInvoice, useGenerateInvoice,
   useNotesTemplates, useUpdateInvoiceStatus, useUpdateInvoicePdfUrl, useMarkPaid,
@@ -9,13 +10,14 @@ import {
   EmptyState, LoadingSpinner, Amount, Modal,
 } from '@/components/shared'
 import { formatRp, formatDate, calcTax } from '@/lib/utils'
-import type { TaxType, Invoice } from '@/types/database'
+import type { TaxType, Invoice, Payment } from '@/types/database'
 import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal, ArrowUpDown, ArrowUp, ArrowDown, CreditCard, Paperclip, X } from 'lucide-react'
 import { useCompanyStore } from '@/store/useCompanyStore'
 import { supabase } from '@/lib/supabase'
 
 // ── Lazy load semua PDF — JANGAN import langsung di level module ──
 const LazyPDFSection = lazy(() => import('./InvoicePDFSection'))
+const LazyReceiptSection = lazy(() => import('./ReceiptPDFSection'))
 
 // ── Error Boundary ─────────────────────────────────────────────
 class PDFErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
@@ -775,6 +777,22 @@ function GenerateInvoice() {
 function InvoicePreviewModal({ invoice: baseInv, onClose }: { invoice: Invoice; onClose: () => void }) {
   const { data: freshInv, isLoading, isError } = useInvoice(baseInv.id)
   const [showPDF, setShowPDF] = useState(false)
+  const [showReceipt, setShowReceipt] = useState(false)
+  const { data: latestPayment } = useQuery({
+    queryKey: ['latest-payment', baseInv.id],
+    enabled: baseInv.status === 'paid',
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('invoice_id', baseInv.id)
+        .order('pay_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      return data as Payment | null
+    },
+  })
 
   return (
     <Modal open title={`Preview — ${baseInv.inv_number}`} onClose={onClose} width="max-w-md">
@@ -786,6 +804,21 @@ function InvoicePreviewModal({ invoice: baseInv, onClose }: { invoice: Invoice; 
           <div className="flex justify-between text-xs"><span className="text-muted-foreground">Due Date</span><span>{formatDate(baseInv.due_date)}</span></div>
           <div className="flex justify-between text-xs border-t border-border pt-2"><span className="text-muted-foreground">Grand Total</span><Amount value={baseInv.grand_total} className="text-sm font-bold text-rok-700" /></div>
         </div>
+
+        {baseInv.status === 'paid' && latestPayment && (
+          <div className="rounded-md border border-green-200 bg-green-50 p-3 text-xs space-y-1.5">
+            <div className="flex justify-between"><span className="text-muted-foreground">Tanggal Bayar</span><span className="font-medium">{formatDate(latestPayment.pay_date)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Metode</span><span className="font-medium">{latestPayment.method}</span></div>
+            {latestPayment.reference && <div className="flex justify-between"><span className="text-muted-foreground">Referensi</span><span className="font-medium">{latestPayment.reference}</span></div>}
+            {latestPayment.bank_name && <div className="flex justify-between"><span className="text-muted-foreground">Bank</span><span className="font-medium">{latestPayment.bank_name}</span></div>}
+            {latestPayment.notes && <div className="flex justify-between gap-2"><span className="text-muted-foreground">Catatan</span><span className="font-medium text-right">{latestPayment.notes}</span></div>}
+            {latestPayment.receipt_url && (
+              <a href={latestPayment.receipt_url} target="_blank" rel="noreferrer" className="inline-flex items-center text-rok-600 hover:underline font-medium">
+                Lihat File Upload
+              </a>
+            )}
+          </div>
+        )}
 
         {/* PDF download — hanya render saat user klik dan data sudah siap */}
         {!showPDF && (
@@ -814,6 +847,28 @@ function InvoicePreviewModal({ invoice: baseInv, onClose }: { invoice: Invoice; 
               ) : (
                 <Button className="w-full" disabled loading>Memuat data...</Button>
               )}
+            </Suspense>
+          </PDFErrorBoundary>
+        )}
+
+        {baseInv.status === 'paid' && latestPayment && !showReceipt && (
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={() => setShowReceipt(true)}
+          >
+            <Download size={14} />
+            Download Receipt
+          </Button>
+        )}
+        {showReceipt && freshInv && latestPayment && (
+          <PDFErrorBoundary fallback={
+            <div className="rounded-md bg-red-50 border border-red-200 p-3 text-xs text-red-700 text-center">
+              Receipt renderer tidak bisa diload di browser ini.
+            </div>
+          }>
+            <Suspense fallback={<Button className="w-full" disabled loading>Memuat Receipt renderer...</Button>}>
+              <LazyReceiptSection invoice={freshInv} payment={latestPayment} />
             </Suspense>
           </PDFErrorBoundary>
         )}
