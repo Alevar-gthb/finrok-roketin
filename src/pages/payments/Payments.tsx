@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { PageHeader, StatusBadge, Button, Input, Select, Modal, EmptyState, LoadingSpinner, Amount } from '@/components/shared'
 import { formatRp, formatDate } from '@/lib/utils'
 import type { Invoice } from '@/types/database'
-import { CreditCard, Search, Paperclip, X } from 'lucide-react'
+import { CreditCard, Search, Paperclip, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { useCompanyStore } from '@/store/useCompanyStore'
 
 export default function Payments() {
@@ -39,6 +39,13 @@ export default function Payments() {
   const toggleSort = (key: typeof sortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('asc') }
+  }
+
+  const SortIcon = ({ keyName }: { keyName: typeof sortKey }) => {
+    if (sortKey !== keyName) return <ArrowUpDown size={12} className="text-muted-foreground" />
+    return sortDir === 'asc'
+      ? <ArrowUp size={12} className="text-rok-600" />
+      : <ArrowDown size={12} className="text-rok-600" />
   }
 
   const filtered = (invoices ?? []).filter(inv => {
@@ -160,13 +167,13 @@ export default function Payments() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/40 border-b border-border">
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('inv_number')}>INV Number</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('client')}>Client</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('termin')}>Termin</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('inv_date')}>Tgl Invoice</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('due_date')}>Due Date</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('grand_total')}>Grand Total</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('status')}>Status</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('inv_number')}><span className="inline-flex items-center gap-1">INV Number <SortIcon keyName="inv_number" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('client')}><span className="inline-flex items-center gap-1">Client <SortIcon keyName="client" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('termin')}><span className="inline-flex items-center gap-1">Termin <SortIcon keyName="termin" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('inv_date')}><span className="inline-flex items-center gap-1">Tgl Invoice <SortIcon keyName="inv_date" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('due_date')}><span className="inline-flex items-center gap-1">Due Date <SortIcon keyName="due_date" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('grand_total')}><span className="inline-flex items-center gap-1">Grand Total <SortIcon keyName="grand_total" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('status')}><span className="inline-flex items-center gap-1">Status <SortIcon keyName="status" /></span></th>
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">Aksi</th>
               </tr>
             </thead>

@@ -14,7 +14,7 @@ import {
 } from '@/components/shared'
 import { formatRp, formatDate, generateClientCode } from '@/lib/utils'
 import type { QuotationSummary, QTStatus } from '@/types/database'
-import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 
 // ─── Main list ────────────────────────────────────────────────
 export default function Quotations() {
@@ -47,6 +47,13 @@ function QuotationList() {
   const toggleSort = (key: typeof sortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('asc') }
+  }
+
+  const SortIcon = ({ keyName }: { keyName: typeof sortKey }) => {
+    if (sortKey !== keyName) return <ArrowUpDown size={12} className="text-muted-foreground" />
+    return sortDir === 'asc'
+      ? <ArrowUp size={12} className="text-rok-600" />
+      : <ArrowDown size={12} className="text-rok-600" />
   }
 
   // Filter
@@ -122,14 +129,14 @@ function QuotationList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/40 border-b border-border">
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_number')}>QT Number</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_date')}>Date</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('client_name')}>Client</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('service_code')}>Service</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('title')}>Judul</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('nominal')}>Nominal</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('total_terms')}>Termin</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_status')}>Status</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_number')}><span className="inline-flex items-center gap-1">QT Number <SortIcon keyName="qt_number" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_date')}><span className="inline-flex items-center gap-1">Date <SortIcon keyName="qt_date" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('client_name')}><span className="inline-flex items-center gap-1">Client <SortIcon keyName="client_name" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('service_code')}><span className="inline-flex items-center gap-1">Service <SortIcon keyName="service_code" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('title')}><span className="inline-flex items-center gap-1">Judul <SortIcon keyName="title" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('nominal')}><span className="inline-flex items-center gap-1">Nominal <SortIcon keyName="nominal" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('total_terms')}><span className="inline-flex items-center gap-1">Termin <SortIcon keyName="total_terms" /></span></th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_status')}><span className="inline-flex items-center gap-1">Status <SortIcon keyName="qt_status" /></span></th>
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>

@@ -10,7 +10,7 @@ import {
 } from '@/components/shared'
 import { formatRp, formatDate, calcTax } from '@/lib/utils'
 import type { TaxType, Invoice } from '@/types/database'
-import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal } from 'lucide-react'
+import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { useCompanyStore } from '@/store/useCompanyStore'
 import { supabase } from '@/lib/supabase'
 
@@ -134,6 +134,7 @@ async function generateAndUploadInvoicePdf(invoice: Invoice) {
 function InvoiceList() {
   const [tab, setTab]       = useState<'invoices'|'terms'>('invoices')
   const [search, setSearch] = useState('')
+  const [termSearch, setTermSearch] = useState('')
   const [filterStatus, setFilter] = useState('all')
   const [docSortKey, setDocSortKey] = useState<'inv_number'|'client'|'term_label'|'inv_date'|'due_date'|'grand_total'|'status'>('inv_date')
   const [docSortDir, setDocSortDir] = useState<'asc'|'desc'>('desc')
@@ -154,6 +155,12 @@ function InvoiceList() {
   }) ?? []
 
   const pendingTerms = terms?.filter(t => ['not_yet', 'need_created'].includes(t.status) && (!t.invoice || (t.invoice as any).status === 'void')) ?? []
+  const filteredTerms = pendingTerms.filter(term => {
+    const s = termSearch.toLowerCase()
+    const qtNumber = term.quotation?.qt_number ?? ''
+    const clientName = term.quotation?.client?.name ?? ''
+    return !s || qtNumber.toLowerCase().includes(s) || clientName.toLowerCase().includes(s) || term.label.toLowerCase().includes(s)
+  })
 
   const toggleDocSort = (key: typeof docSortKey) => {
     if (docSortKey === key) setDocSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -162,6 +169,19 @@ function InvoiceList() {
   const toggleTermSort = (key: typeof termSortKey) => {
     if (termSortKey === key) setTermSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setTermSortKey(key); setTermSortDir('asc') }
+  }
+
+  const DocSortIcon = ({ keyName }: { keyName: typeof docSortKey }) => {
+    if (docSortKey !== keyName) return <ArrowUpDown size={12} className="text-muted-foreground" />
+    return docSortDir === 'asc'
+      ? <ArrowUp size={12} className="text-rok-600" />
+      : <ArrowDown size={12} className="text-rok-600" />
+  }
+  const TermSortIcon = ({ keyName }: { keyName: typeof termSortKey }) => {
+    if (termSortKey !== keyName) return <ArrowUpDown size={12} className="text-muted-foreground" />
+    return termSortDir === 'asc'
+      ? <ArrowUp size={12} className="text-rok-600" />
+      : <ArrowDown size={12} className="text-rok-600" />
   }
 
   const sortedInv = [...filteredInv].sort((a, b) => {
@@ -181,7 +201,7 @@ function InvoiceList() {
     }
   })
 
-  const sortedTerms = [...pendingTerms].sort((a, b) => {
+  const sortedTerms = [...filteredTerms].sort((a, b) => {
     const factor = termSortDir === 'asc' ? 1 : -1
     const qtA = a.quotation?.qt_number ?? ''
     const qtB = b.quotation?.qt_number ?? ''
@@ -250,7 +270,7 @@ function InvoiceList() {
                             idx === arr.length - 1
                               ? 'sticky right-0 z-20 min-w-[260px] bg-white border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
-                          }`}
+                          } ${idx !== arr.length - 1 ? 'cursor-pointer select-none' : ''}`}
                           onClick={idx === arr.length - 1 ? undefined : () => {
                             const keyMap = {
                               'INV Number': 'inv_number',
@@ -265,7 +285,20 @@ function InvoiceList() {
                             if (sortKey) toggleDocSort(sortKey)
                           }}
                         >
-                          {h}
+                          <span className="inline-flex items-center gap-1">
+                            {h}
+                            {idx !== arr.length - 1 && (
+                              <DocSortIcon keyName={{
+                                'INV Number': 'inv_number',
+                                Client: 'client',
+                                Termin: 'term_label',
+                                'Tgl Invoice': 'inv_date',
+                                'Due Date': 'due_date',
+                                'Grand Total': 'grand_total',
+                                Status: 'status',
+                              }[h as 'INV Number'|'Client'|'Termin'|'Tgl Invoice'|'Due Date'|'Grand Total'|'Status']} />
+                            )}
+                          </span>
                         </th>
                       ))}
                     </tr>
@@ -309,6 +342,17 @@ function InvoiceList() {
         </>
       ) : (
         <>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="relative max-w-xs flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                className="w-full pl-8 pr-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-rok-400"
+                placeholder="Cari QT number, client, atau label termin..."
+                value={termSearch}
+                onChange={e => setTermSearch(e.target.value)}
+              />
+            </div>
+          </div>
           {loadingTerms ? <LoadingSpinner /> : sortedTerms.length===0 ? <EmptyState title="Semua termin sudah digenerate" /> : (
             <div className="rounded-lg border border-border bg-white overflow-hidden">
               <div className="overflow-x-auto">
@@ -334,7 +378,7 @@ function InvoiceList() {
                             idx === arr.length - 1
                               ? 'sticky right-0 z-20 min-w-[140px] bg-white border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
-                          }`}
+                          } ${idx !== arr.length - 1 ? 'cursor-pointer select-none' : ''}`}
                           onClick={idx === arr.length - 1 ? undefined : () => {
                             const keyMap = {
                               'QT Number': 'qt_number',
@@ -348,7 +392,19 @@ function InvoiceList() {
                             if (sortKey) toggleTermSort(sortKey)
                           }}
                         >
-                          {h}
+                          <span className="inline-flex items-center gap-1">
+                            {h}
+                            {idx !== arr.length - 1 && (
+                              <TermSortIcon keyName={{
+                                'QT Number': 'qt_number',
+                                Client: 'client',
+                                'Label Termin': 'label',
+                                Nominal: 'nominal',
+                                'Est. Tanggal': 'est_date',
+                                Status: 'status',
+                              }[h as 'QT Number'|'Client'|'Label Termin'|'Nominal'|'Est. Tanggal'|'Status']} />
+                            )}
+                          </span>
                         </th>
                       ))}
                     </tr>
