@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { buildQTNumber, buildINVNumber, calcTax } from '@/lib/utils'
+import React from 'react'
 import type {
   Client, Service, NotesTemplate, Quotation, InvoiceTerm,
   Invoice, Payment, QTStatus, TaxType, QuotationSummary,
@@ -565,6 +566,76 @@ export const useMarkPaid = () => {
       await supabase.from('invoices').update({ status: 'paid' }).eq('id', payload.invoice_id)
       const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', payload.invoice_id).single()
       if (inv) await supabase.from('invoice_terms').update({ status: 'paid' }).eq('id', inv.invoice_term_id)
+
+      // Best effort: simpan Receipt PDF saat Mark Paid.
+      // Jika gagal generate/upload receipt, proses mark paid tetap berhasil.
+      try {
+        const { data: invoice } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('id', payload.invoice_id)
+          .single()
+
+        if (invoice) {
+          const { data: ctx } = await supabase
+            .from('invoice_terms')
+            .select(`
+              label,
+              term_number,
+              quotations (
+                companies (name, address, phone, website, email, logo_url),
+                clients (name, address)
+              )
+            `)
+            .eq('id', invoice.invoice_term_id)
+            .single()
+
+          if (ctx) {
+            const [{ pdf }, { default: FinrokInvoicePDF }] = await Promise.all([
+              import('@react-pdf/renderer'),
+              import('@/components/shared/InvoicePDF'),
+            ])
+            const qt = (ctx as any).quotations
+            const company = qt?.companies
+            const client = qt?.clients
+            const receiptData = {
+              company: {
+                name: company?.name ?? 'PT Roketin Kreatif Teknologi',
+                address: company?.address ?? null,
+                phone: company?.phone ?? null,
+                website: company?.website ?? null,
+                email: company?.email ?? null,
+                logo_url: company?.logo_url ?? null,
+              },
+              inv_number: invoice.inv_number,
+              inv_date: invoice.inv_date,
+              due_date: invoice.due_date,
+              client_name: client?.name ?? '',
+              client_address: client?.address ?? null,
+              term_label: (ctx as any).label,
+              term_number: (ctx as any).term_number,
+              subtotal: invoice.subtotal,
+              tax_type: invoice.tax_type as 'none' | 'ppn11' | 'ppn12',
+              taxable_base: invoice.taxable_base ?? null,
+              tax_amount: invoice.tax_amount,
+              grand_total: invoice.grand_total,
+              notes: null,
+              document_title: 'RECEIPT',
+              expiration_label: 'Payment Date',
+              expiration_date: payload.pay_date,
+              show_notes: false,
+            }
+
+            const doc = React.createElement(FinrokInvoicePDF, { data: receiptData })
+            const blob = await pdf(doc).toBlob()
+            const safeInv = String(invoice.inv_number).replace(/[^a-zA-Z0-9._-]/g, '_')
+            const filePath = `receipts_pdf/${data.id}_RECEIPT_${safeInv}.pdf`
+            await supabase.storage.from('receipts').upload(filePath, blob, { contentType: 'application/pdf', upsert: true })
+          }
+        }
+      } catch (receiptErr) {
+        console.error('Failed to auto-save receipt PDF:', receiptErr)
+      }
 
       return data
     },
