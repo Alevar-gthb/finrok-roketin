@@ -15,6 +15,7 @@ export default function Dashboard() {
   const { data, isLoading } = useDashboard(selectedCompanyId)
   const { mutate: refreshOverdue } = useRefreshOverdue()
   const { data: needCreated } = useAllInvoiceTerms({ status: 'need_created', companyId: selectedCompanyId })
+  const { data: issuedInvoices } = useInvoices({ status: 'issued', companyId: selectedCompanyId })
   const { data: overdueInvoices } = useInvoices({ status: 'overdue', companyId: selectedCompanyId })
   const navigate = useNavigate()
 
@@ -26,6 +27,10 @@ export default function Dashboard() {
   }, [selectedCompanyId, refreshOverdue])
 
   if (isLoading) return <LoadingSpinner />
+
+  const waitingCount = issuedInvoices?.length ?? 0
+  const waitingTotal = (issuedInvoices ?? []).reduce((sum, inv) => sum + inv.grand_total, 0)
+  const overdueCount = overdueInvoices?.length ?? 0
 
   // Build chart data: merge monthly income + forecast for all 12 months
   const chartData = MONTHS.map((name, i) => {
@@ -47,7 +52,7 @@ export default function Dashboard() {
       />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-5 gap-4 mb-6">
         <StatCard
           label="QT Deal Aktif"
           value={data?.qt_deal_total ?? 0}
@@ -57,10 +62,17 @@ export default function Dashboard() {
         />
         <StatCard
           label="Invoice Waiting"
-          value={data?.inv_waiting_count ?? 0}
-          sub="Invoice sudah diterbitkan, belum dibayar"
+          value={formatRp(waitingTotal, { short: true })}
+          sub={`${waitingCount} invoice berstatus issued`}
           accent={data?.inv_waiting_count ? 'amber' : 'default'}
           icon={<Clock size={16} />}
+        />
+        <StatCard
+          label="Invoice Overdue"
+          value={overdueCount}
+          sub="Invoice due date terlewati, belum dibayar"
+          accent={overdueCount ? 'red' : 'default'}
+          icon={<AlertCircle size={16} />}
         />
         <StatCard
           label="Paid Bulan Ini"
@@ -79,13 +91,13 @@ export default function Dashboard() {
       </div>
 
       {/* Alert cards */}
-      {((data?.overdue_count ?? 0) > 0 || (data?.need_created_count ?? 0) > 0) && (
+      {(overdueCount > 0 || (data?.need_created_count ?? 0) > 0) && (
         <div className="grid grid-cols-2 gap-4 mb-6">
-          {(data?.overdue_count ?? 0) > 0 && (
+          {overdueCount > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-start gap-3">
               <AlertCircle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-sm font-medium text-red-700">{data?.overdue_count} Invoice Overdue</p>
+                <p className="text-sm font-medium text-red-700">{overdueCount} Invoice Overdue</p>
                 <p className="text-xs text-red-600 mt-0.5">Due date telah terlewati dan belum dibayar</p>
                 <button onClick={() => navigate('/invoices?status=overdue')} className="text-xs text-red-700 font-medium underline mt-1">
                   Lihat semua →
