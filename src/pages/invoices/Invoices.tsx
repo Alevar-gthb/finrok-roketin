@@ -204,7 +204,7 @@ function InvoiceList() {
                             h === 'Status' ? 'min-w-[110px] ' : ''
                           }${
                             idx === arr.length - 1
-                              ? 'sticky right-0 z-20 min-w-[260px] bg-secondary/40 border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
+                              ? 'sticky right-0 z-20 min-w-[260px] bg-white border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
                           }`}
                         >
@@ -229,7 +229,7 @@ function InvoiceList() {
                           <td className="px-4 py-2.5 text-right whitespace-nowrap min-w-[140px]"><Amount value={inv.grand_total} className="text-xs" /></td>
                           <td className="px-4 py-2.5 whitespace-nowrap min-w-[110px]"><StatusBadge status={inv.status} type="invoice" /></td>
                           <td
-                            className={`px-4 py-2.5 sticky right-0 z-10 min-w-[260px] border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] ${rowBg} group-hover:bg-rok-50/30`}
+                            className="px-4 py-2.5 sticky right-0 z-10 min-w-[260px] border-l border-border bg-white shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] group-hover:bg-white"
                           >
                             <div className="flex items-center gap-2 flex-nowrap whitespace-nowrap">
                               <button type="button" onClick={() => setPreview(inv)} className="text-[11px] text-rok-600 hover:underline font-medium flex items-center gap-1 shrink-0"><Eye size={11} /> Preview</button>
@@ -276,7 +276,7 @@ function InvoiceList() {
                             h === 'Status' ? 'min-w-[120px] ' : ''
                           }${
                             idx === arr.length - 1
-                              ? 'sticky right-0 z-20 min-w-[140px] bg-secondary/40 border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
+                              ? 'sticky right-0 z-20 min-w-[140px] bg-white border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
                           }`}
                         >
@@ -297,7 +297,7 @@ function InvoiceList() {
                           <td className="px-4 py-2.5 text-right whitespace-nowrap min-w-[140px]"><Amount value={term.nominal} className="text-xs" /></td>
                           <td className={`px-4 py-2.5 text-xs whitespace-nowrap min-w-[120px] ${term.status==='need_created'?'text-amber-600 font-medium':'text-muted-foreground'}`}>{formatDate(term.est_date)}</td>
                           <td className="px-4 py-2.5 whitespace-nowrap min-w-[120px]"><StatusBadge status={term.status} type="term" /></td>
-                          <td className={`px-4 py-2.5 sticky right-0 z-10 min-w-[140px] border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] ${rowBg} group-hover:bg-rok-50/30 whitespace-nowrap`}>
+                          <td className="px-4 py-2.5 sticky right-0 z-10 min-w-[140px] border-l border-border bg-white shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] group-hover:bg-white whitespace-nowrap">
                             <Button size="sm" onClick={() => navigate(`/invoices/generate/${term.id}`)}><FileText size={12} /> Generate</Button>
                           </td>
                         </tr>
