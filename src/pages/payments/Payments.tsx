@@ -16,6 +16,8 @@ export default function Payments() {
   const markPaid = useMarkPaid()
   const [search, setSearch]       = useState('')
   const [filterStatus, setFilter] = useState<'issued_overdue'|'all'|'paid'>('issued_overdue')
+  const [sortKey, setSortKey]     = useState<'inv_number'|'client'|'termin'|'inv_date'|'due_date'|'grand_total'|'status'>('inv_date')
+  const [sortDir, setSortDir]     = useState<'asc'|'desc'>('desc')
   const [payModal, setPayModal]   = useState<Invoice | null>(null)
   const [form, setForm] = useState({
     pay_date: new Date().toISOString().split('T')[0],
@@ -34,6 +36,11 @@ export default function Payments() {
     refreshOverdue()
   }, [selectedCompanyId, refreshOverdue])
 
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
   const filtered = (invoices ?? []).filter(inv => {
     const matchStatus =
       filterStatus === 'all' ? true :
@@ -42,6 +49,23 @@ export default function Payments() {
     const s = search.toLowerCase()
     const matchSearch = !s || inv.inv_number.toLowerCase().includes(s) || (inv.invoice_term?.quotation?.client?.name ?? '').toLowerCase().includes(s)
     return matchStatus && matchSearch
+  })
+
+  const sorted = [...filtered].sort((a, b) => {
+    const factor = sortDir === 'asc' ? 1 : -1
+    const clientA = a.invoice_term?.quotation?.client?.name ?? ''
+    const clientB = b.invoice_term?.quotation?.client?.name ?? ''
+    const termA = a.invoice_term?.label ?? ''
+    const termB = b.invoice_term?.label ?? ''
+    switch (sortKey) {
+      case 'inv_number': return factor * a.inv_number.localeCompare(b.inv_number)
+      case 'client': return factor * clientA.localeCompare(clientB)
+      case 'termin': return factor * termA.localeCompare(termB)
+      case 'inv_date': return factor * (new Date(a.inv_date).getTime() - new Date(b.inv_date).getTime())
+      case 'due_date': return factor * (new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+      case 'grand_total': return factor * (a.grand_total - b.grand_total)
+      case 'status': return factor * a.status.localeCompare(b.status)
+    }
   })
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,18 +155,23 @@ export default function Payments() {
         ))}
       </div>
 
-      {filtered.length === 0 ? <EmptyState title="Tidak ada invoice ditemukan" description={filterStatus === 'issued_overdue' ? 'Belum ada invoice berstatus Issued / Overdue.' : ''} /> : (
+      {sorted.length === 0 ? <EmptyState title="Tidak ada invoice ditemukan" description={filterStatus === 'issued_overdue' ? 'Belum ada invoice berstatus Issued / Overdue.' : ''} /> : (
         <div className="rounded-lg border border-border overflow-hidden bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/40 border-b border-border">
-                {['INV Number','Client','Termin','Tgl Invoice','Due Date','Grand Total','Status','Aksi'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
-                ))}
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('inv_number')}>INV Number</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('client')}>Client</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('termin')}>Termin</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('inv_date')}>Tgl Invoice</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('due_date')}>Due Date</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('grand_total')}>Grand Total</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('status')}>Status</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((inv, i) => {
+              {sorted.map((inv, i) => {
                 const cli = inv.invoice_term?.quotation?.client
                 return (
                   <tr key={inv.id} className={`border-b border-border last:border-0 hover:bg-rok-50/30 ${i%2===0?'bg-white':'bg-secondary/10'}`}>

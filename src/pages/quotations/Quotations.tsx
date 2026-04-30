@@ -40,7 +40,14 @@ function QuotationList() {
   const [showStatus, setShowStatus] = useState<QuotationSummary | null>(null)
   const [showTerms, setShowTerms]   = useState<QuotationSummary | null>(null)
   const [showEdit, setShowEdit]     = useState<QuotationSummary | null>(null)
+  const [sortKey, setSortKey]       = useState<'qt_number'|'qt_date'|'client_name'|'service_code'|'title'|'nominal'|'total_terms'|'qt_status'>('qt_date')
+  const [sortDir, setSortDir]       = useState<'asc'|'desc'>('desc')
   const updateQT    = useUpdateQuotation()
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
 
   // Filter
   const filtered = summaries?.filter(q => {
@@ -50,8 +57,22 @@ function QuotationList() {
     return matchStatus && matchSearch
   }) ?? []
 
-  const total_nominal = filtered.reduce((s, q) => s + q.nominal, 0)
-  const total_paid    = filtered.reduce((s, q) => s + q.total_paid, 0)
+  const sorted = [...filtered].sort((a, b) => {
+    const factor = sortDir === 'asc' ? 1 : -1
+    switch (sortKey) {
+      case 'qt_number':   return factor * a.qt_number.localeCompare(b.qt_number)
+      case 'qt_date':     return factor * (new Date(a.qt_date).getTime() - new Date(b.qt_date).getTime())
+      case 'client_name': return factor * a.client_name.localeCompare(b.client_name)
+      case 'service_code':return factor * a.service_code.localeCompare(b.service_code)
+      case 'title':       return factor * a.title.localeCompare(b.title)
+      case 'nominal':     return factor * (a.nominal - b.nominal)
+      case 'total_terms': return factor * (a.total_terms - b.total_terms)
+      case 'qt_status':   return factor * a.qt_status.localeCompare(b.qt_status)
+    }
+  })
+
+  const total_nominal = sorted.reduce((s, q) => s + q.nominal, 0)
+  const total_paid    = sorted.reduce((s, q) => s + q.total_paid, 0)
 
   if (isLoading) return <LoadingSpinner />
 
@@ -94,20 +115,26 @@ function QuotationList() {
       </div>
 
       {/* Table */}
-      {filtered.length === 0 ? (
+      {sorted.length === 0 ? (
         <EmptyState title="Belum ada quotation" description="Buat quotation pertama untuk memulai." action={<Button onClick={() => setShowCreate(true)}><Plus size={14} /> Buat QT</Button>} />
       ) : (
         <div className="rounded-lg border border-border overflow-hidden bg-white">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/40 border-b border-border">
-                {['QT Number','Date','Client','Service','Judul','Nominal','Termin','Status','Actions'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
-                ))}
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_number')}>QT Number</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_date')}>Date</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('client_name')}>Client</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('service_code')}>Service</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('title')}>Judul</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('nominal')}>Nominal</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('total_terms')}>Termin</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer" onClick={() => toggleSort('qt_status')}>Status</th>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((qt, i) => (
+              {sorted.map((qt, i) => (
                 <tr key={qt.id} className={`border-b border-border last:border-0 hover:bg-rok-50/30 transition-colors ${i%2===0?'bg-white':'bg-secondary/10'}`}>
                   <td className="px-4 py-3">
                     <span className="font-mono text-xs text-rok-700 font-medium">{qt.qt_number}</span>

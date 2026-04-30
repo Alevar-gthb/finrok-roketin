@@ -135,6 +135,10 @@ function InvoiceList() {
   const [tab, setTab]       = useState<'invoices'|'terms'>('invoices')
   const [search, setSearch] = useState('')
   const [filterStatus, setFilter] = useState('all')
+  const [docSortKey, setDocSortKey] = useState<'inv_number'|'client'|'term_label'|'inv_date'|'due_date'|'grand_total'|'status'>('inv_date')
+  const [docSortDir, setDocSortDir] = useState<'asc'|'desc'>('desc')
+  const [termSortKey, setTermSortKey] = useState<'qt_number'|'client'|'label'|'nominal'|'est_date'|'status'>('est_date')
+  const [termSortDir, setTermSortDir] = useState<'asc'|'desc'>('asc')
   const [previewInv, setPreview]  = useState<Invoice | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ inv: Invoice; next: string; label: string } | null>(null)
   const navigate = useNavigate()
@@ -150,6 +154,48 @@ function InvoiceList() {
   }) ?? []
 
   const pendingTerms = terms?.filter(t => ['not_yet', 'need_created'].includes(t.status) && (!t.invoice || (t.invoice as any).status === 'void')) ?? []
+
+  const toggleDocSort = (key: typeof docSortKey) => {
+    if (docSortKey === key) setDocSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setDocSortKey(key); setDocSortDir('asc') }
+  }
+  const toggleTermSort = (key: typeof termSortKey) => {
+    if (termSortKey === key) setTermSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setTermSortKey(key); setTermSortDir('asc') }
+  }
+
+  const sortedInv = [...filteredInv].sort((a, b) => {
+    const factor = docSortDir === 'asc' ? 1 : -1
+    const clientA = a.invoice_term?.quotation?.client?.name ?? ''
+    const clientB = b.invoice_term?.quotation?.client?.name ?? ''
+    const labelA = a.invoice_term?.label ?? ''
+    const labelB = b.invoice_term?.label ?? ''
+    switch (docSortKey) {
+      case 'inv_number': return factor * a.inv_number.localeCompare(b.inv_number)
+      case 'client': return factor * clientA.localeCompare(clientB)
+      case 'term_label': return factor * labelA.localeCompare(labelB)
+      case 'inv_date': return factor * (new Date(a.inv_date).getTime() - new Date(b.inv_date).getTime())
+      case 'due_date': return factor * (new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+      case 'grand_total': return factor * (a.grand_total - b.grand_total)
+      case 'status': return factor * a.status.localeCompare(b.status)
+    }
+  })
+
+  const sortedTerms = [...pendingTerms].sort((a, b) => {
+    const factor = termSortDir === 'asc' ? 1 : -1
+    const qtA = a.quotation?.qt_number ?? ''
+    const qtB = b.quotation?.qt_number ?? ''
+    const clientA = a.quotation?.client?.name ?? ''
+    const clientB = b.quotation?.client?.name ?? ''
+    switch (termSortKey) {
+      case 'qt_number': return factor * qtA.localeCompare(qtB)
+      case 'client': return factor * clientA.localeCompare(clientB)
+      case 'label': return factor * a.label.localeCompare(b.label)
+      case 'nominal': return factor * (a.nominal - b.nominal)
+      case 'est_date': return factor * (new Date(a.est_date).getTime() - new Date(b.est_date).getTime())
+      case 'status': return factor * a.status.localeCompare(b.status)
+    }
+  })
 
   const handleStatusChange = async () => {
     if (!confirmAction) return
@@ -179,7 +225,7 @@ function InvoiceList() {
               </button>
             ))}
           </div>
-          {loadingInv ? <LoadingSpinner /> : filteredInv.length === 0 ? <EmptyState title="Belum ada invoice" description="Generate invoice dari termin yang sudah siap." /> : (
+          {loadingInv ? <LoadingSpinner /> : sortedInv.length === 0 ? <EmptyState title="Belum ada invoice" description="Generate invoice dari termin yang sudah siap." /> : (
             <div className="rounded-lg border border-border bg-white overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1180px] text-sm">
@@ -205,6 +251,19 @@ function InvoiceList() {
                               ? 'sticky right-0 z-20 min-w-[260px] bg-white border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
                           }`}
+                          onClick={idx === arr.length - 1 ? undefined : () => {
+                            const keyMap = {
+                              'INV Number': 'inv_number',
+                              Client: 'client',
+                              Termin: 'term_label',
+                              'Tgl Invoice': 'inv_date',
+                              'Due Date': 'due_date',
+                              'Grand Total': 'grand_total',
+                              Status: 'status',
+                            } as const
+                            const sortKey = keyMap[h as keyof typeof keyMap]
+                            if (sortKey) toggleDocSort(sortKey)
+                          }}
                         >
                           {h}
                         </th>
@@ -212,7 +271,7 @@ function InvoiceList() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredInv.map((inv, i) => {
+                    {sortedInv.map((inv, i) => {
                       const qt = inv.invoice_term?.quotation; const cli = qt?.client
                       const actions = STATUS_ACTIONS[inv.status] ?? []
                       const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-secondary/10'
@@ -250,7 +309,7 @@ function InvoiceList() {
         </>
       ) : (
         <>
-          {loadingTerms ? <LoadingSpinner /> : pendingTerms.length===0 ? <EmptyState title="Semua termin sudah digenerate" /> : (
+          {loadingTerms ? <LoadingSpinner /> : sortedTerms.length===0 ? <EmptyState title="Semua termin sudah digenerate" /> : (
             <div className="rounded-lg border border-border bg-white overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1180px] text-sm">
@@ -276,6 +335,18 @@ function InvoiceList() {
                               ? 'sticky right-0 z-20 min-w-[140px] bg-white border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
                           }`}
+                          onClick={idx === arr.length - 1 ? undefined : () => {
+                            const keyMap = {
+                              'QT Number': 'qt_number',
+                              Client: 'client',
+                              'Label Termin': 'label',
+                              Nominal: 'nominal',
+                              'Est. Tanggal': 'est_date',
+                              Status: 'status',
+                            } as const
+                            const sortKey = keyMap[h as keyof typeof keyMap]
+                            if (sortKey) toggleTermSort(sortKey)
+                          }}
                         >
                           {h}
                         </th>
@@ -283,7 +354,7 @@ function InvoiceList() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingTerms.map((term, i) => {
+                    {sortedTerms.map((term, i) => {
                       const qt = term.quotation; const cli = qt?.client
                       const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-secondary/10'
                       return (
