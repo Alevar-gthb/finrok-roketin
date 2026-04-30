@@ -2,7 +2,7 @@ import { useState, Suspense, lazy, Component, type ReactNode } from 'react'
 import { Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   useAllInvoiceTerms, useInvoices, useInvoice, useGenerateInvoice,
-  useNotesTemplates, useUpdateInvoiceStatus,
+  useNotesTemplates, useUpdateInvoiceStatus, useUpdateInvoicePdfUrl,
 } from '@/hooks/useFinrok'
 import {
   PageHeader, StatusBadge, Button, Input, Select, Textarea,
@@ -12,6 +12,7 @@ import { formatRp, formatDate, calcTax } from '@/lib/utils'
 import type { TaxType, Invoice } from '@/types/database'
 import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal } from 'lucide-react'
 import { useCompanyStore } from '@/store/useCompanyStore'
+import { supabase } from '@/lib/supabase'
 
 // ── Lazy load semua PDF — JANGAN import langsung di level module ──
 const LazyPDFSection = lazy(() => import('./InvoicePDFSection'))
@@ -39,6 +40,95 @@ const STATUS_ACTIONS: Record<string, { label: string; next: 'issued'|'paid'|'voi
   overdue: [{ label: 'Mark Paid', next: 'paid', color: 'text-green-600' }, { label: 'Void', next: 'void', color: 'text-red-500' }],
   paid:    [],
   void:    [],
+}
+
+type InvoicePdfContext = {
+  label: string
+  term_number: number
+  quotations: {
+    companies: {
+      name: string | null
+      address: string | null
+      phone: string | null
+      website: string | null
+      email: string | null
+      logo_url: string | null
+    } | null
+    clients: {
+      name: string | null
+      address: string | null
+    } | null
+  } | null
+}
+
+const INVOICE_PDF_BUCKET = import.meta.env.VITE_SUPABASE_INVOICE_PDF_BUCKET || 'receipts'
+
+const sanitizeFileName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, '_')
+
+async function fetchInvoicePdfContext(invoiceTermId: string) {
+  const { data, error } = await supabase
+    .from('invoice_terms')
+    .select(`
+      label,
+      term_number,
+      quotations (
+        companies (
+          name, address, phone, website, email, logo_url
+        ),
+        clients (
+          name, address
+        )
+      )
+    `)
+    .eq('id', invoiceTermId)
+    .single()
+  if (error) throw error
+  return data as InvoicePdfContext
+}
+
+async function generateAndUploadInvoicePdf(invoice: Invoice) {
+  const [{ pdf }, { default: FinrokInvoicePDF }] = await Promise.all([
+    import('@react-pdf/renderer'),
+    import('@/components/shared/InvoicePDF'),
+  ])
+  const ctx = await fetchInvoicePdfContext(invoice.invoice_term_id)
+  const company = ctx.quotations?.companies
+  const client = ctx.quotations?.clients
+
+  const pdfData = {
+    company: {
+      name: company?.name ?? 'PT Roketin Kreatif Teknologi',
+      address: company?.address ?? null,
+      phone: company?.phone ?? null,
+      website: company?.website ?? null,
+      email: company?.email ?? null,
+      logo_url: company?.logo_url ?? null,
+    },
+    inv_number: invoice.inv_number,
+    inv_date: invoice.inv_date,
+    due_date: invoice.due_date,
+    client_name: client?.name ?? '',
+    client_address: client?.address ?? null,
+    term_label: ctx.label,
+    term_number: ctx.term_number,
+    subtotal: invoice.subtotal,
+    tax_type: invoice.tax_type as 'none' | 'ppn11' | 'ppn12',
+    taxable_base: invoice.taxable_base ?? null,
+    tax_amount: invoice.tax_amount,
+    grand_total: invoice.grand_total,
+    notes: invoice.custom_notes ?? null,
+  }
+
+  const blob = await pdf(<FinrokInvoicePDF data={pdfData} />).toBlob()
+  const fileName = sanitizeFileName(`${invoice.inv_number}.pdf`)
+  const filePath = `invoices/${invoice.id}/${fileName}`
+  const { error: uploadError } = await supabase.storage
+    .from(INVOICE_PDF_BUCKET)
+    .upload(filePath, blob, { contentType: 'application/pdf', upsert: true })
+  if (uploadError) throw uploadError
+
+  const { data: publicData } = supabase.storage.from(INVOICE_PDF_BUCKET).getPublicUrl(filePath)
+  return publicData.publicUrl
 }
 
 function InvoiceList() {
@@ -236,15 +326,18 @@ function GenerateInvoice() {
   const { data: terms } = useAllInvoiceTerms({ companyId: selectedCompanyId })
   const { data: notesTemplates } = useNotesTemplates()
   const generateInvoice = useGenerateInvoice()
+  const updateInvoicePdfUrl = useUpdateInvoicePdfUrl()
   const term = terms?.find(t => t.id === termId)
   const qt = term?.quotation; const cli = qt?.client; const svc = qt?.service
   const [form, setForm] = useState({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none' as TaxType, notes_template_id: '', custom_notes: '' })
   const [done, setDone] = useState<{ inv_number: string; grand_total: number; id: string } | null>(null)
+  const [pdfErr, setPdfErr] = useState<string | null>(null)
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
   const tax = calcTax(term?.nominal ?? 0, form.tax_type)
   const dueDate = (() => { const d = new Date(form.inv_date); d.setDate(d.getDate() + parseInt(form.due_days||'0')); return d })()
   const handleGenerate = async () => {
     if (!term||!qt||!cli||!svc) return
+    setPdfErr(null)
 
     // Auto-detect voided invoice untuk re-generate
     // (pakai existing_invoice_id supaya UPDATE bukan INSERT, hindari 409 conflict)
@@ -252,7 +345,7 @@ function GenerateInvoice() {
       ? (term.invoice as any).id
       : undefined
 
-    const result = await generateInvoice.mutateAsync({
+    const invoice = await generateInvoice.mutateAsync({
       invoice_term_id:    term.id,
       inv_date:           form.inv_date,
       due_days:           parseInt(form.due_days),
@@ -264,9 +357,18 @@ function GenerateInvoice() {
       client_code:        cli.code,
       term_number:        term.term_number,
       existing_invoice_id: editId ?? voidedInvoiceId,
-    })
-    const inv = result as unknown as { inv_number: string; grand_total: number; id: string }
-    setDone({ inv_number: inv.inv_number, grand_total: inv.grand_total, id: inv.id })
+    }) as Invoice
+
+    try {
+      const pdfUrl = await generateAndUploadInvoicePdf(invoice)
+      await updateInvoicePdfUrl.mutateAsync({ id: invoice.id, pdf_url: pdfUrl })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setPdfErr(`Invoice sudah dibuat, tapi gagal simpan PDF otomatis: ${msg}`)
+      return
+    }
+
+    setDone({ inv_number: invoice.inv_number, grand_total: invoice.grand_total, id: invoice.id })
   }
   if (!term) return <LoadingSpinner />
 
@@ -281,7 +383,7 @@ function GenerateInvoice() {
           <p className="text-sm text-green-700 font-mono mt-1">{done.inv_number}</p>
           <p className="text-sm text-green-700 mt-1">Grand Total: <strong>{formatRp(done.grand_total)}</strong></p>
         </div>
-        <p className="text-xs text-green-600">Download PDF tersedia di halaman Invoice List → Preview.</p>
+        <p className="text-xs text-green-600">PDF otomatis tersimpan dan status invoice berubah ke Issued.</p>
         <div className="flex gap-3 justify-center pt-2">
           <Button onClick={() => navigate('/invoices')}><FileText size={14} /> Ke Invoice List</Button>
           <Button variant="outline" onClick={() => { setDone(null); setForm({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none', notes_template_id: '', custom_notes: '' }) }}>Buat Invoice Lain</Button>
@@ -351,10 +453,11 @@ function GenerateInvoice() {
               </div>
             </div>
           </div>
-          <Button className="w-full" onClick={handleGenerate} loading={generateInvoice.isPending}>
+          <Button className="w-full" onClick={handleGenerate} loading={generateInvoice.isPending || updateInvoicePdfUrl.isPending}>
             <FileText size={14} />{editId?'Update Invoice':'Generate Invoice'}
           </Button>
           {generateInvoice.isError && <p className="text-xs text-destructive text-center">{String(generateInvoice.error)}</p>}
+          {pdfErr && <p className="text-xs text-destructive text-center">{pdfErr}</p>}
         </div>
       </div>
     </div>
