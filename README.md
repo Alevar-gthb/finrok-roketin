@@ -1,6 +1,4 @@
-# Finrok — Finance Roketin
-
-Aplikasi manajemen keuangan internal PT Roketin Kreatif Teknologi.
+# Finrok — Finance Application
 
 ## Tech Stack
 - React 18 + Vite + TypeScript
