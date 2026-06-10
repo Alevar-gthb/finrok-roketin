@@ -232,6 +232,21 @@ export const useDeleteInvoiceTerm = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (termId: string) => {
+      // Get linked invoice IDs first
+      const { data: linkedInvoices } = await supabase.from('invoices').select('id').eq('invoice_term_id', termId)
+      const invoiceIds = (linkedInvoices ?? []).map(i => i.id)
+
+      // Delete payments linked to those invoices (FK: payments.invoice_id → invoices.id RESTRICT)
+      if (invoiceIds.length > 0) {
+        const { error: payErr } = await supabase.from('payments').delete().in('invoice_id', invoiceIds)
+        if (payErr) throw payErr
+      }
+
+      // Delete linked invoices
+      const { error: invErr } = await supabase.from('invoices').delete().eq('invoice_term_id', termId)
+      if (invErr) throw invErr
+
+      // Delete the term
       const { error } = await supabase.from('invoice_terms').delete().eq('id', termId)
       if (error) throw error
     },
@@ -239,6 +254,8 @@ export const useDeleteInvoiceTerm = () => {
       qc.invalidateQueries({ queryKey: ['invoice_terms'] })
       qc.invalidateQueries({ queryKey: ['invoice_terms_all'] })
       qc.invalidateQueries({ queryKey: ['v_quotation_summary'] })
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['payments'] })
     },
   })
 }

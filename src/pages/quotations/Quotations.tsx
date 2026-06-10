@@ -736,7 +736,7 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
                 <div className="flex items-center gap-2">
                   <StatusBadge status={t.status} type="term" />
                   {canDeleteTerm(t.status) && (
-                    <button onClick={async () => { if (confirm('Hapus termin ini?')) await deleteTermMutation.mutateAsync(t.id) }}
+                    <button onClick={async () => { if (confirm('Hapus termin ini?')) try { await deleteTermMutation.mutateAsync(t.id) } catch { alert('Gagal menghapus termin. Periksa koneksi atau hubungi admin.') } }}
                       className="text-red-400 hover:text-red-600" disabled={deleteTermMutation.isPending}>
                       <Trash2 size={13} />
                     </button>
