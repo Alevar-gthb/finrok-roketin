@@ -89,10 +89,22 @@ async function fetchInvoicePdfContext(invoiceTermId: string) {
 }
 
 async function generateAndUploadInvoicePdf(invoice: Invoice) {
-  const [{ pdf }, { default: FinrokInvoicePDF }] = await Promise.all([
-    import('@react-pdf/renderer'),
-    import('@/components/shared/InvoicePDF'),
-  ])
+  let pdfModule: typeof import('@react-pdf/renderer')
+  let pdfCompModule: { default: typeof import('@/components/shared/InvoicePDF').default }
+  try {
+    ;[pdfModule, pdfCompModule] = await Promise.all([
+      import('@react-pdf/renderer'),
+      import('@/components/shared/InvoicePDF'),
+    ])
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('Failed to fetch') || msg.includes('dynamically imported')) {
+      throw new Error('Versi baru telah di-deploy. Silahkan refresh halaman (Ctrl+Shift+R) lalu coba lagi.')
+    }
+    throw e
+  }
+  const { pdf } = pdfModule
+  const { default: FinrokInvoicePDF } = pdfCompModule
   const ctx = await fetchInvoicePdfContext(invoice.invoice_term_id)
   const company = ctx.quotations?.companies
   const client = ctx.quotations?.clients
@@ -118,7 +130,7 @@ async function generateAndUploadInvoicePdf(invoice: Invoice) {
     taxable_base: invoice.taxable_base ?? null,
     tax_amount: invoice.tax_amount,
     grand_total: invoice.grand_total,
-    notes: invoice.custom_notes ?? null,
+    notes: invoice.custom_notes || invoice.notes_template?.content || null,
   }
 
   const blob = await pdf(<FinrokInvoicePDF data={pdfData} />).toBlob()
