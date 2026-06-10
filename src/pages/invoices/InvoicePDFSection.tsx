@@ -76,7 +76,7 @@ export default function InvoicePDFSection({ invoice }: { invoice: Invoice }) {
     taxable_base: invoice.taxable_base ?? null,
     tax_amount:   invoice.tax_amount,
     grand_total:  invoice.grand_total,
-    notes:        invoice.custom_notes ?? null,
+    notes:        invoice.custom_notes || invoice.notes_template?.content || null,
   }
 
   return (
