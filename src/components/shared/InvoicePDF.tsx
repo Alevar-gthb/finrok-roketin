@@ -162,7 +162,6 @@ export default function InvoicePDF({ data }: { data: InvoiceData }) {
   const expirationDate = data.expiration_date ?? data.due_date
   const showNotes = data.show_notes ?? true
 
-  // Parse notes into numbered lines
   const noteLines = (data.notes ?? '')
     .split('\n')
     .map(l => l.trim())
@@ -300,7 +299,7 @@ export default function InvoicePDF({ data }: { data: InvoiceData }) {
             <Text style={s.notesHeader}>TERMS OF SALE AND OTHER COMMENTS</Text>
             {noteLines.map((line, i) => (
               <Text key={i} style={s.notesItem}>
-                {i + 1}. {line}
+                {line}
               </Text>
             ))}
           </View>
