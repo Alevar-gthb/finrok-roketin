@@ -185,7 +185,7 @@ export default function Sidebar() {
           <LogOut size={13} /> Keluar
         </button>
         <p className="text-[10px] text-muted-foreground px-3">PT Roketin Kreatif Teknologi</p>
-        <p className="text-[10px] text-muted-foreground px-3">v1.0.1</p>
+        <p className="text-[10px] text-muted-foreground px-3">v1.0.2</p>
       </div>
     </aside>
   )
