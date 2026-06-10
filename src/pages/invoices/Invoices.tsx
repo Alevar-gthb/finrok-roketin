@@ -19,6 +19,15 @@ import { supabase } from '@/lib/supabase'
 const LazyPDFSection = lazy(() => import('./InvoicePDFSection'))
 const LazyReceiptSection = lazy(() => import('./ReceiptPDFSection'))
 
+// Supabase returns one-to-many embeds as array even with a unique constraint.
+// Normalize invoice field from InvoiceTerm to a single object or null.
+function termInvoice(t: { invoice?: unknown }): { id: string; status: string } | null {
+  const inv = t.invoice
+  if (!inv) return null
+  if (Array.isArray(inv)) return (inv[0] as any) ?? null
+  return inv as any
+}
+
 // ── Error Boundary ─────────────────────────────────────────────
 class PDFErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
   constructor(props: any) { super(props); this.state = { hasError: false } }
@@ -183,7 +192,7 @@ function InvoiceList() {
     return !s || inv.inv_number.toLowerCase().includes(s) || (inv.invoice_term?.quotation?.client?.name ?? '').toLowerCase().includes(s)
   }) ?? []
 
-  const pendingTerms = terms?.filter(t => ['not_yet', 'need_created'].includes(t.status) && (!t.invoice || (t.invoice as any).status === 'void')) ?? []
+  const pendingTerms = terms?.filter(t => ['not_yet', 'need_created'].includes(t.status) && (!termInvoice(t) || termInvoice(t)?.status === 'void')) ?? []
   const filteredTerms = pendingTerms.filter(term => {
     const s = termSearch.toLowerCase()
     const qtNumber = term.quotation?.qt_number ?? ''
@@ -662,9 +671,8 @@ function GenerateInvoice() {
 
     // Auto-detect voided invoice untuk re-generate
     // (pakai existing_invoice_id supaya UPDATE bukan INSERT, hindari 409 conflict)
-    const voidedInvoiceId = (term.invoice as any)?.status === 'void'
-      ? (term.invoice as any).id
-      : undefined
+    const existingInv = termInvoice(term)
+    const voidedInvoiceId = existingInv?.status === 'void' ? existingInv.id : undefined
 
     const invoice = await generateInvoice.mutateAsync({
       invoice_term_id:    term.id,
@@ -713,7 +721,7 @@ function GenerateInvoice() {
     </div>
   )
 
-  const isRegenerate = !editId && (term?.invoice as any)?.status === 'void'
+  const isRegenerate = !editId && termInvoice(term ?? {})?.status === 'void'
 
   return (
     <div className="page max-w-3xl">
