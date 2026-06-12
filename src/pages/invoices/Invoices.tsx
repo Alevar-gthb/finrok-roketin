@@ -76,6 +76,18 @@ const INVOICE_PDF_BUCKET = import.meta.env.VITE_SUPABASE_INVOICE_PDF_BUCKET || '
 
 const sanitizeFileName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, '_')
 
+// Trigger browser download dari blob (atau URL) — file turun ke folder Downloads user.
+function triggerDownload(source: Blob | string, fileName: string) {
+  const url = typeof source === 'string' ? source : URL.createObjectURL(source)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  if (typeof source !== 'string') setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 async function fetchInvoicePdfContext(invoiceTermId: string) {
   const { data, error } = await supabase
     .from('invoice_terms')
@@ -151,7 +163,7 @@ async function generateAndUploadInvoicePdf(invoice: Invoice) {
   if (uploadError) throw uploadError
 
   const { data: publicData } = supabase.storage.from(INVOICE_PDF_BUCKET).getPublicUrl(filePath)
-  return publicData.publicUrl
+  return { pdfUrl: publicData.publicUrl, blob, fileName }
 }
 
 function InvoiceList() {
@@ -418,7 +430,7 @@ function InvoiceList() {
                           >
                             <div className="flex items-center gap-2 flex-nowrap whitespace-nowrap">
                               <button type="button" onClick={() => setPreview(inv)} className="text-[11px] text-rok-600 hover:underline font-medium flex items-center gap-1 shrink-0"><Eye size={11} /> Preview</button>
-                              {inv.status==='draft' && <button type="button" onClick={() => navigate(`/invoices/generate/${inv.invoice_term_id}?edit=${inv.id}`)} className="text-[11px] text-amber-700 hover:underline font-medium flex items-center gap-1 shrink-0"><RefreshCw size={11} /> Edit</button>}
+                              {['draft','issued','overdue'].includes(inv.status) && <button type="button" onClick={() => navigate(`/invoices/generate/${inv.invoice_term_id}?edit=${inv.id}`)} className="text-[11px] text-amber-700 hover:underline font-medium flex items-center gap-1 shrink-0"><RefreshCw size={11} /> Edit</button>}
                               {actions.map(a => (
                                 <button
                                   type="button"
@@ -648,23 +660,42 @@ function GenerateInvoice() {
   const { data: notesTemplates } = useNotesTemplates()
   const generateInvoice = useGenerateInvoice()
   const updateInvoicePdfUrl = useUpdateInvoicePdfUrl()
+  const { data: editingInv } = useInvoice(editId ?? undefined)
   const term = terms?.find(t => t.id === termId)
   const qt = term?.quotation; const cli = qt?.client; const svc = qt?.service
-  const [form, setForm] = useState({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none' as TaxType, notes_template_id: '', custom_notes: '' })
+  const [form, setForm] = useState({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none' as TaxType, notes_template_id: '', custom_notes: '', nominal: '' })
   const [done, setDone] = useState<{ inv_number: string; grand_total: number; id: string } | null>(null)
   const [pdfErr, setPdfErr] = useState<string | null>(null)
-  const [taxInitialized, setTaxInitialized] = useState(false)
+  const [initialized, setInitialized] = useState(false)
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
-  const tax = calcTax(term?.nominal ?? 0, form.tax_type)
+  const tax = calcTax(Number(form.nominal) || 0, form.tax_type)
   const dueDate = (() => { const d = new Date(form.inv_date); d.setDate(d.getDate() + parseInt(form.due_days||'0')); return d })()
 
+  // Prefill: saat edit isi dari invoice lama, saat create isi default + infer PPN dari notes QT.
   useEffect(() => {
-    if (!term || taxInitialized) return
-    const qNotes = term.quotation?.notes?.toLowerCase?.() ?? ''
-    const inferredTax: TaxType = qNotes.includes('tax: ppn 11%') ? 'ppn11' : 'none'
-    setForm(f => ({ ...f, tax_type: inferredTax }))
-    setTaxInitialized(true)
-  }, [term, taxInitialized])
+    if (initialized) return
+    if (editId) {
+      if (!editingInv) return
+      const days = Math.max(0, Math.round(
+        (new Date(editingInv.due_date).getTime() - new Date(editingInv.inv_date).getTime()) / 86400000,
+      ))
+      setForm({
+        inv_date:          editingInv.inv_date,
+        due_days:          String(days),
+        tax_type:          editingInv.tax_type as TaxType,
+        notes_template_id: editingInv.notes_template_id ?? '',
+        custom_notes:      editingInv.custom_notes ?? '',
+        nominal:           String(editingInv.subtotal ?? ''),
+      })
+      setInitialized(true)
+    } else {
+      if (!term) return
+      const qNotes = term.quotation?.notes?.toLowerCase?.() ?? ''
+      const inferredTax: TaxType = qNotes.includes('tax: ppn 11%') ? 'ppn11' : 'none'
+      setForm(f => ({ ...f, tax_type: inferredTax, nominal: String(term.nominal ?? '') }))
+      setInitialized(true)
+    }
+  }, [editId, editingInv, term, initialized])
   const handleGenerate = async () => {
     if (!term||!qt||!cli||!svc) return
     setPdfErr(null)
@@ -681,7 +712,7 @@ function GenerateInvoice() {
       tax_type:           form.tax_type,
       notes_template_id:  form.notes_template_id || null,
       custom_notes:       form.custom_notes || null,
-      nominal:            term.nominal,
+      nominal:            Number(form.nominal) || 0,
       service_code:       svc.code,
       client_code:        cli.code,
       term_number:        term.term_number,
@@ -689,8 +720,10 @@ function GenerateInvoice() {
     }) as Invoice
 
     try {
-      const pdfUrl = await generateAndUploadInvoicePdf(invoice)
+      const { pdfUrl, blob, fileName } = await generateAndUploadInvoicePdf(invoice)
       await updateInvoicePdfUrl.mutateAsync({ id: invoice.id, pdf_url: pdfUrl })
+      // Langsung download PDF ke mesin user (dipicu dari klik tombol → tetap user-gesture).
+      triggerDownload(blob, fileName)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setPdfErr(`Invoice sudah dibuat, tapi gagal simpan PDF otomatis: ${msg}`)
@@ -712,10 +745,10 @@ function GenerateInvoice() {
           <p className="text-sm text-green-700 font-mono mt-1">{done.inv_number}</p>
           <p className="text-sm text-green-700 mt-1">Grand Total: <strong>{formatRp(done.grand_total)}</strong></p>
         </div>
-        <p className="text-xs text-green-600">PDF otomatis tersimpan dan status invoice berubah ke Issued.</p>
+        <p className="text-xs text-green-600">PDF otomatis ter-download & tersimpan. Status invoice: Issued.</p>
         <div className="flex gap-3 justify-center pt-2">
           <Button onClick={() => navigate('/invoices')}><FileText size={14} /> Ke Invoice List</Button>
-          <Button variant="outline" onClick={() => { setDone(null); setForm({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none', notes_template_id: '', custom_notes: '' }) }}>Buat Invoice Lain</Button>
+          {!editId && <Button variant="outline" onClick={() => { setDone(null); setInitialized(false); setForm({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none', notes_template_id: '', custom_notes: '', nominal: '' }) }}>Buat Invoice Lain</Button>}
         </div>
       </div>
     </div>
@@ -736,6 +769,12 @@ function GenerateInvoice() {
           <span>Invoice sebelumnya sudah di-void. Generate ini akan <strong>menggantikan</strong> invoice lama dengan nomor invoice baru.</span>
         </div>
       )}
+      {editId && editingInv && editingInv.status !== 'draft' && (
+        <div className="mb-4 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <span>⚠️</span>
+          <span>Invoice sudah diterbitkan (<strong>{editingInv.inv_number}</strong>). Perubahan akan regenerate PDF, <strong>nomor invoice tetap sama</strong>, dan tercatat di log audit.</span>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-5">
         <div className="col-span-2 space-y-4">
           <div className="rounded-lg border border-border bg-white p-4 space-y-3">
@@ -752,6 +791,12 @@ function GenerateInvoice() {
             <div className="grid grid-cols-2 gap-3">
               <Input label="Tanggal Invoice *" type="date" value={form.inv_date} onChange={e => set('inv_date', e.target.value)} />
               <Input label="Jatuh Tempo (hari) *" type="number" min="1" value={form.due_days} onChange={e => set('due_days', e.target.value)} />
+            </div>
+            <div>
+              <Input label="Nominal (sebelum PPN) *" type="number" min="0" value={form.nominal} onChange={e => set('nominal', e.target.value)} />
+              {term && Number(form.nominal) !== term.nominal && (
+                <p className="mt-1 text-[11px] text-amber-600">Nominal berbeda dari termin quotation ({formatRp(term.nominal)}).</p>
+              )}
             </div>
             <Select label="Tax / PPN" value={form.tax_type} onChange={e => set('tax_type', e.target.value as TaxType)}>
               <option value="none">Tanpa PPN</option>
@@ -795,9 +840,29 @@ function GenerateInvoice() {
 
 // ── Preview Modal — PDF hanya diload kalau user buka modal ──────
 function InvoicePreviewModal({ invoice: baseInv, onClose }: { invoice: Invoice; onClose: () => void }) {
+  const navigate = useNavigate()
   const { data: freshInv, isLoading, isError } = useInvoice(baseInv.id)
   const [showPDF, setShowPDF] = useState(false)
   const [showReceipt, setShowReceipt] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const canEdit = ['draft', 'issued', 'overdue'].includes(baseInv.status)
+
+  // Download cepat: ambil PDF tersimpan langsung (tanpa render ulang react-pdf).
+  // Fallback ke render client-side kalau pdf_url kosong / gagal di-fetch.
+  const handleDownload = async () => {
+    const url = freshInv?.pdf_url ?? baseInv.pdf_url
+    if (!url) { setShowPDF(true); return }
+    setDownloading(true)
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(String(res.status))
+      triggerDownload(await res.blob(), `${baseInv.inv_number}.pdf`)
+    } catch {
+      setShowPDF(true)
+    } finally {
+      setDownloading(false)
+    }
+  }
   const { data: latestPayment } = useQuery({
     queryKey: ['latest-payment', baseInv.id],
     enabled: baseInv.status === 'paid',
@@ -840,16 +905,16 @@ function InvoicePreviewModal({ invoice: baseInv, onClose }: { invoice: Invoice; 
           </div>
         )}
 
-        {/* PDF download — hanya render saat user klik dan data sudah siap */}
+        {/* PDF download — pakai file tersimpan; fallback render client-side bila perlu */}
         {!showPDF && (
           <Button
             className="w-full"
-            disabled={isLoading}
-            loading={isLoading}
-            onClick={() => setShowPDF(true)}
+            disabled={isLoading || downloading}
+            loading={isLoading || downloading}
+            onClick={handleDownload}
           >
             <Download size={14} />
-            {isLoading ? 'Memuat data...' : 'Download PDF'}
+            {isLoading ? 'Memuat data...' : downloading ? 'Menyiapkan PDF...' : 'Download PDF'}
           </Button>
         )}
         {showPDF && (
@@ -893,6 +958,15 @@ function InvoicePreviewModal({ invoice: baseInv, onClose }: { invoice: Invoice; 
           </PDFErrorBoundary>
         )}
 
+        {canEdit && (
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => navigate(`/invoices/generate/${baseInv.invoice_term_id}?edit=${baseInv.id}`)}
+          >
+            <RefreshCw size={14} /> Edit Invoice
+          </Button>
+        )}
         <Button variant="outline" className="w-full" onClick={onClose}>Tutup</Button>
       </div>
     </Modal>

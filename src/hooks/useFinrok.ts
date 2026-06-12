@@ -415,18 +415,15 @@ export const useGenerateInvoice = () => {
       term_number: number
       existing_invoice_id?: string
     }) => {
-      const { data: seqData, error: seqErr } = await supabase.rpc('next_inv_seq')
-      if (seqErr) throw seqErr
-      const seq: number = seqData
-
       const invDate = new Date(payload.inv_date)
       const dueDate = new Date(invDate)
       dueDate.setDate(dueDate.getDate() + payload.due_days)
 
-      const inv_number = buildINVNumber(seq, payload.service_code, payload.client_code, payload.term_number, invDate)
       const tax = calcTax(payload.nominal, payload.tax_type)
 
       if (payload.existing_invoice_id) {
+        // Edit in-place: nomor invoice TETAP (tidak ambil seq baru), pdf_url
+        // tidak di-null-kan supaya kalau regen PDF gagal invoice tidak kehilangan PDF lama.
         const { data: existing } = await supabase.from('invoices').select('*').eq('id', payload.existing_invoice_id).single()
         await supabase.from('invoice_edit_logs').insert({
           invoice_id: payload.existing_invoice_id,
@@ -444,8 +441,6 @@ export const useGenerateInvoice = () => {
           grand_total:       tax.grandTotal,
           notes_template_id: payload.notes_template_id,
           custom_notes:      payload.custom_notes,
-          status:            'draft',
-          pdf_url:           null,
         }).eq('id', payload.existing_invoice_id).select().single()
         if (error) throw error
 
@@ -456,6 +451,11 @@ export const useGenerateInvoice = () => {
           .single()
         return (fullUpdated ?? data) as Invoice
       } else {
+        const { data: seqData, error: seqErr } = await supabase.rpc('next_inv_seq')
+        if (seqErr) throw seqErr
+        const seq: number = seqData
+        const inv_number = buildINVNumber(seq, payload.service_code, payload.client_code, payload.term_number, invDate)
+
         const { data, error } = await supabase.from('invoices').insert({
           seq,
           inv_number,
