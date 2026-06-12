@@ -156,10 +156,13 @@ async function generateAndUploadInvoicePdf(invoice: Invoice) {
 
   const blob = await pdf(<FinrokInvoicePDF data={pdfData} />).toBlob()
   const fileName = sanitizeFileName(`${invoice.inv_number}.pdf`)
-  const filePath = `invoices/${invoice.id}/${fileName}`
+  // Path storage selalu unik (timestamp) supaya setiap upload = INSERT, bukan
+  // UPDATE/overwrite. Bucket 'receipts' hanya punya policy INSERT, jadi upsert
+  // file lama saat edit invoice akan kena RLS. File lama jadi orphan (acceptable).
+  const filePath = `invoices/${invoice.id}/${Date.now()}_${fileName}`
   const { error: uploadError } = await supabase.storage
     .from(INVOICE_PDF_BUCKET)
-    .upload(filePath, blob, { contentType: 'application/pdf', upsert: true })
+    .upload(filePath, blob, { contentType: 'application/pdf', upsert: false })
   if (uploadError) throw uploadError
 
   const { data: publicData } = supabase.storage.from(INVOICE_PDF_BUCKET).getPublicUrl(filePath)
