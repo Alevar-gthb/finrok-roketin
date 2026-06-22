@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Suspense, lazy, Component, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Routes, Route, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -11,7 +12,7 @@ import {
 } from '@/components/shared'
 import { formatRp, formatDate, calcTax } from '@/lib/utils'
 import type { TaxType, Invoice, Payment } from '@/types/database'
-import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal, ArrowUpDown, ArrowUp, ArrowDown, CreditCard, Paperclip, X } from 'lucide-react'
+import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal, ArrowUpDown, ArrowUp, ArrowDown, CreditCard, Paperclip, X, MoreVertical } from 'lucide-react'
 import { useCompanyStore } from '@/store/useCompanyStore'
 import { supabase } from '@/lib/supabase'
 
@@ -51,6 +52,91 @@ const STATUS_ACTIONS: Record<string, { label: string; next: 'issued'|'paid'|'voi
   overdue: [{ label: 'Mark Paid', next: 'paid', color: 'text-green-600' }, { label: 'Void', next: 'void', color: 'text-red-500' }],
   paid:    [],
   void:    [],
+}
+
+// ── Kebab (⋮) row actions — menu di-portal ke body supaya tidak ke-clip
+//    oleh overflow tabel, dan tabel tidak perlu kolom aksi yang lebar ──
+function RowActions({
+  inv, onPreview, onEdit, onAction,
+}: {
+  inv: Invoice
+  onPreview: () => void
+  onEdit: () => void
+  onAction: (a: { label: string; next: 'issued'|'paid'|'void'; color: string }) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const actions = STATUS_ACTIONS[inv.status] ?? []
+  const canEdit = ['draft', 'issued', 'overdue'].includes(inv.status)
+
+  useEffect(() => {
+    if (!open) return
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (r) setCoords({ top: r.bottom + 4, right: window.innerWidth - r.right })
+    }
+    place()
+    const onDown = (e: MouseEvent) => {
+      if (!btnRef.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onClose = () => setOpen(false)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onClose, true)
+    window.addEventListener('resize', onClose)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onClose, true)
+      window.removeEventListener('resize', onClose)
+    }
+  }, [open])
+
+  const item = (key: string, icon: ReactNode, label: string, color: string, run: () => void) => (
+    <button
+      key={key}
+      type="button"
+      onClick={() => { run(); setOpen(false) }}
+      className={`w-full px-3 py-2 flex items-center gap-2 text-left text-xs font-medium hover:bg-secondary/60 ${color}`}
+    >
+      {icon}{label}
+    </button>
+  )
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="Aksi"
+        onClick={() => setOpen(o => !o)}
+        className={`mx-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground ${open ? 'bg-secondary text-foreground' : ''}`}
+      >
+        <MoreVertical size={15} />
+      </button>
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: coords.top, right: coords.right, zIndex: 60 }}
+          className="min-w-[168px] overflow-hidden rounded-lg border border-border bg-white py-1 shadow-lg"
+        >
+          {item('preview', <Eye size={13} />, 'Preview', 'text-rok-600', onPreview)}
+          {canEdit && item('edit', <RefreshCw size={13} />, 'Edit', 'text-amber-700', onEdit)}
+          {actions.map(a => item(
+            a.next,
+            a.next === 'issued' ? <SendHorizonal size={13} /> : a.next === 'paid' ? <CheckCircle size={13} /> : <XCircle size={13} />,
+            a.label,
+            a.color,
+            () => onAction(a),
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
 }
 
 type InvoicePdfContext = {
@@ -271,6 +357,19 @@ function InvoiceList() {
     }
   })
 
+  const runRowAction = (inv: Invoice, a: { label: string; next: 'issued'|'paid'|'void' }) => {
+    if (a.next === 'paid') {
+      setUploadError('')
+      setReceiptFile(null)
+      if (fileRef.current) fileRef.current.value = ''
+      setPayForm({ pay_date: new Date().toISOString().split('T')[0], method: 'transfer', reference: '', bank_name: '', notes: '' })
+      setPayModal(inv)
+      return
+    }
+    if (a.next === 'issued') setSentDate(new Date().toISOString().split('T')[0])
+    setConfirmAction({ inv, next: a.next, label: a.label })
+  }
+
   const handleStatusChange = async () => {
     if (!confirmAction) return
     await updateStatus.mutateAsync({
@@ -356,27 +455,27 @@ function InvoiceList() {
           {loadingInv ? <LoadingSpinner /> : sortedInv.length === 0 ? <EmptyState title="Belum ada invoice" description="Generate invoice dari termin yang sudah siap." /> : (
             <div className="rounded-lg border border-border bg-white overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1180px] text-sm">
+                <table className="w-full min-w-[1080px] text-sm">
                   <thead>
                     <tr className="bg-secondary/40 border-b border-border">
                       {(['INV Number','Client','Termin','Tgl Invoice','Due Date','Sent Date','Grand Total','Status','Aksi'] as const).map((h, idx, arr) => (
                         <th
                           key={h}
-                          className={`px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap ${
-                            h === 'INV Number' ? 'min-w-[220px] ' : ''
+                          className={`px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap ${
+                            h === 'INV Number' ? 'min-w-[196px] ' : ''
                           }${
-                            h === 'Client' ? 'min-w-[170px] ' : ''
+                            h === 'Client' ? 'min-w-[140px] ' : ''
                           }${
-                            h === 'Termin' ? 'min-w-[220px] ' : ''
+                            h === 'Termin' ? 'w-full min-w-[280px] ' : ''
                           }${
-                            h === 'Tgl Invoice' || h === 'Due Date' || h === 'Sent Date' ? 'min-w-[110px] ' : ''
+                            h === 'Tgl Invoice' || h === 'Due Date' || h === 'Sent Date' ? 'min-w-[88px] ' : ''
                           }${
-                            h === 'Grand Total' ? 'min-w-[140px] ' : ''
+                            h === 'Grand Total' ? 'min-w-[118px] ' : ''
                           }${
-                            h === 'Status' ? 'min-w-[110px] ' : ''
+                            h === 'Status' ? 'min-w-[96px] ' : ''
                           }${
                             idx === arr.length - 1
-                              ? 'sticky right-0 z-20 min-w-[260px] bg-white border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
+                              ? 'sticky right-0 z-20 w-[48px] min-w-[48px] text-center bg-white border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.12)]'
                               : ''
                           } ${idx !== arr.length - 1 ? 'cursor-pointer select-none' : ''}`}
                           onClick={idx === arr.length - 1 ? undefined : () => {
@@ -416,47 +515,24 @@ function InvoiceList() {
                   <tbody>
                     {sortedInv.map((inv, i) => {
                       const qt = inv.invoice_term?.quotation; const cli = qt?.client
-                      const actions = STATUS_ACTIONS[inv.status] ?? []
                       const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-secondary/10'
                       return (
                         <tr key={inv.id} className={`group border-b border-border last:border-0 hover:bg-rok-50/30 ${rowBg}`}>
-                          <td className="px-4 py-2.5 font-mono text-xs text-rok-700 font-medium min-w-[220px] max-w-[220px] truncate" title={inv.inv_number}>{inv.inv_number}</td>
-                          <td className="px-4 py-2.5 text-xs min-w-[170px] max-w-[170px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-xs min-w-[220px] max-w-[220px] truncate" title={inv.invoice_term?.label ?? undefined}>{inv.invoice_term?.label ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px]">{formatDate(inv.inv_date)}</td>
-                          <td className={`px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px] ${inv.status==='overdue'?'text-red-600 font-medium':''}`}>{formatDate(inv.due_date)}</td>
-                          <td className="px-4 py-2.5 text-xs whitespace-nowrap min-w-[110px]">{inv.issued_at ? formatDate(inv.issued_at) : '—'}</td>
-                          <td className="px-4 py-2.5 text-right whitespace-nowrap min-w-[140px]"><Amount value={inv.grand_total} className="text-xs" /></td>
-                          <td className="px-4 py-2.5 whitespace-nowrap min-w-[110px]"><StatusBadge status={inv.status} type="invoice" /></td>
-                          <td
-                            className="px-4 py-2.5 sticky right-0 z-10 min-w-[260px] border-l border-border bg-white shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] group-hover:bg-white"
-                          >
-                            <div className="flex items-center gap-2 flex-nowrap whitespace-nowrap">
-                              <button type="button" onClick={() => setPreview(inv)} className="text-[11px] text-rok-600 hover:underline font-medium flex items-center gap-1 shrink-0"><Eye size={11} /> Preview</button>
-                              {['draft','issued','overdue'].includes(inv.status) && <button type="button" onClick={() => navigate(`/invoices/generate/${inv.invoice_term_id}?edit=${inv.id}`)} className="text-[11px] text-amber-700 hover:underline font-medium flex items-center gap-1 shrink-0"><RefreshCw size={11} /> Edit</button>}
-                              {actions.map(a => (
-                                <button
-                                  type="button"
-                                  key={a.next}
-                                  onClick={() => {
-                                    if (a.next === 'paid') {
-                                      setUploadError('')
-                                      setReceiptFile(null)
-                                      if (fileRef.current) fileRef.current.value = ''
-                                      setPayForm({ pay_date: new Date().toISOString().split('T')[0], method: 'transfer', reference: '', bank_name: '', notes: '' })
-                                      setPayModal(inv)
-                                      return
-                                    }
-                                    if (a.next === 'issued') setSentDate(new Date().toISOString().split('T')[0])
-                                    setConfirmAction({ inv, next: a.next, label: a.label })
-                                  }}
-                                  className={`text-[11px] hover:underline font-medium flex items-center gap-1 shrink-0 ${a.color}`}
-                                >
-                                  {a.next==='issued' ? <SendHorizonal size={11} /> : a.next==='paid' ? <CheckCircle size={11} /> : <XCircle size={11} />}
-                                  {a.label}
-                                </button>
-                              ))}
-                            </div>
+                          <td className="px-3 py-2.5 font-mono text-xs text-rok-700 font-medium min-w-[196px] max-w-[196px] truncate" title={inv.inv_number}>{inv.inv_number}</td>
+                          <td className="px-3 py-2.5 text-xs min-w-[140px] max-w-[140px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-xs w-full min-w-[280px] max-w-[420px] truncate" title={inv.invoice_term?.label ?? undefined}>{inv.invoice_term?.label ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-xs whitespace-nowrap min-w-[88px]">{formatDate(inv.inv_date)}</td>
+                          <td className={`px-3 py-2.5 text-xs whitespace-nowrap min-w-[88px] ${inv.status==='overdue'?'text-red-600 font-medium':''}`}>{formatDate(inv.due_date)}</td>
+                          <td className="px-3 py-2.5 text-xs whitespace-nowrap min-w-[88px]">{inv.issued_at ? formatDate(inv.issued_at) : '—'}</td>
+                          <td className="px-3 py-2.5 text-right whitespace-nowrap min-w-[118px]"><Amount value={inv.grand_total} className="text-xs" /></td>
+                          <td className="px-3 py-2.5 whitespace-nowrap min-w-[96px]"><StatusBadge status={inv.status} type="invoice" /></td>
+                          <td className={`px-2 py-2.5 sticky right-0 z-10 w-[48px] min-w-[48px] border-l border-border shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] ${rowBg} group-hover:bg-rok-50/30`}>
+                            <RowActions
+                              inv={inv}
+                              onPreview={() => setPreview(inv)}
+                              onEdit={() => navigate(`/invoices/generate/${inv.invoice_term_id}?edit=${inv.id}`)}
+                              onAction={a => runRowAction(inv, a)}
+                            />
                           </td>
                         </tr>
                       )
