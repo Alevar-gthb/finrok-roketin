@@ -98,6 +98,13 @@ export interface InvoiceTerm {
   invoice?: Invoice
 }
 
+// Line item di dalam satu invoice (qty × unit_price = total baris)
+export interface InvoiceLineItem {
+  description: string
+  qty: number
+  unit_price: number
+}
+
 // Invoice document
 export interface Invoice {
   id: string
@@ -111,6 +118,7 @@ export interface Invoice {
   taxable_base: number | null
   tax_amount: number
   grand_total: number
+  line_items: InvoiceLineItem[] | null
   notes_template_id: string | null
   custom_notes: string | null
   pdf_url: string | null

@@ -2,6 +2,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { format, parseISO } from 'date-fns'
 import { id } from 'date-fns/locale'
+import type { InvoiceLineItem } from '@/types/database'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -69,6 +70,25 @@ export function calcTax(nominal: number, taxType: 'none' | 'ppn11' | 'ppn12') {
   const taxableBase = Math.round(nominal * 11 / 12)
   const grandTotal  = nominal + taxAmount
   return { subtotal: nominal, taxableBase, taxAmount, grandTotal }
+}
+
+/** Subtotal dari daftar line item: Σ(qty × unit_price), dibulatkan */
+export function lineItemsSubtotal(items: InvoiceLineItem[] | null | undefined): number {
+  if (!items || items.length === 0) return 0
+  return Math.round(items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0))
+}
+
+/**
+ * Kembalikan line item tersimpan, atau fallback 1 baris (legacy invoice / termin)
+ * memakai label termin sebagai deskripsi dan subtotal sebagai unit price.
+ */
+export function resolveLineItems(src: {
+  line_items?: InvoiceLineItem[] | null
+  term_label?: string | null
+  subtotal?: number | null
+}): InvoiceLineItem[] {
+  if (src.line_items && src.line_items.length > 0) return src.line_items
+  return [{ description: src.term_label ?? '', qty: 1, unit_price: src.subtotal ?? 0 }]
 }
 
 /** Status label mapping */

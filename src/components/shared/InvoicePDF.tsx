@@ -20,6 +20,8 @@ import {
   StyleSheet,
   Image,
 } from '@react-pdf/renderer'
+import type { InvoiceLineItem } from '@/types/database'
+import { resolveLineItems } from '@/lib/utils'
 
 // ─── Tipe data yang perlu dikirim ke komponen ini ───────────────────────────
 
@@ -39,9 +41,10 @@ export interface InvoiceData {
   due_date: string
   client_name: string
   client_address: string | null
-  // Item tunggal dari invoice_term
-  term_label: string               // ← POIN 5: pakai label termin langsung
-  term_number: number              // ← POIN 4: nomor urut termin
+  // Line item invoice. Kalau kosong/null → fallback 1 baris dari term_label + subtotal.
+  line_items?: InvoiceLineItem[] | null
+  term_label: string               // ← POIN 5: pakai label termin langsung (fallback)
+  term_number: number              // ← POIN 4: nomor urut termin (fallback)
   subtotal: number
   tax_type: 'none' | 'ppn11' | 'ppn12'
   taxable_base: number | null
@@ -167,6 +170,8 @@ export default function InvoicePDF({ data }: { data: InvoiceData }) {
     .map(l => l.trim())
     .filter(Boolean)
 
+  const rows = resolveLineItems(data)
+
   return (
     <Document>
       <Page size="A4" style={s.page}>
@@ -245,24 +250,18 @@ export default function InvoicePDF({ data }: { data: InvoiceData }) {
           <Text style={[s.tableHeaderText, s.colTotal]}>TOTAL AMOUNT</Text>
         </View>
 
-        {/* Single item row — POIN 4 & 5 */}
-        <View style={s.tableRow}>
-          {/* POIN 4: Isi kolom = nomor urut, bukan kode service */}
-          <Text style={[{ fontSize: 9, color: C.dark }, s.colNomor]}>
-            {data.term_number}
-          </Text>
-          {/* POIN 5: Description = label termin persis */}
-          <Text style={[{ fontSize: 9, color: C.dark }, s.colDesc]}>
-            {data.term_label}
-          </Text>
-          <Text style={[{ fontSize: 9, color: C.dark }, s.colQty]}>1</Text>
-          <Text style={[{ fontSize: 9, color: C.dark }, s.colPrice]}>
-            {fmt(data.subtotal)}
-          </Text>
-          <Text style={[{ fontSize: 9, color: C.dark }, s.colTotal]}>
-            {fmt(data.subtotal)}
-          </Text>
-        </View>
+        {/* Item rows — multi line item, nomor urut 1..n */}
+        {rows.map((item, i) => (
+          <View key={i} style={s.tableRow}>
+            <Text style={[{ fontSize: 9, color: C.dark }, s.colNomor]}>{i + 1}</Text>
+            <Text style={[{ fontSize: 9, color: C.dark }, s.colDesc]}>{item.description}</Text>
+            <Text style={[{ fontSize: 9, color: C.dark }, s.colQty]}>{item.qty}</Text>
+            <Text style={[{ fontSize: 9, color: C.dark }, s.colPrice]}>{fmt(item.unit_price)}</Text>
+            <Text style={[{ fontSize: 9, color: C.dark }, s.colTotal]}>
+              {fmt(Math.round(item.qty * item.unit_price))}
+            </Text>
+          </View>
+        ))}
 
         {/* ── TOTALS — POIN 3: Hilangkan baris tax rate % ── */}
         <View style={s.totalsBox}>

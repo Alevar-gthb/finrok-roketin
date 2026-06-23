@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { buildQTNumber, buildINVNumber, calcTax } from '@/lib/utils'
+import { buildQTNumber, buildINVNumber, calcTax, lineItemsSubtotal } from '@/lib/utils'
 import React from 'react'
 import type {
   Client, Service, NotesTemplate, Quotation, InvoiceTerm,
   Invoice, Payment, QTStatus, TaxType, QuotationSummary,
-  MonthlyIncome, MonthlyForecast,
+  MonthlyIncome, MonthlyForecast, InvoiceLineItem,
 } from '@/types/database'
 
 // ============================================================
@@ -409,7 +409,7 @@ export const useGenerateInvoice = () => {
       tax_type: TaxType
       notes_template_id: string | null
       custom_notes: string | null
-      nominal: number
+      line_items: InvoiceLineItem[]
       service_code: string
       client_code: string
       term_number: number
@@ -419,7 +419,8 @@ export const useGenerateInvoice = () => {
       const dueDate = new Date(invDate)
       dueDate.setDate(dueDate.getDate() + payload.due_days)
 
-      const tax = calcTax(payload.nominal, payload.tax_type)
+      const subtotal = lineItemsSubtotal(payload.line_items)
+      const tax = calcTax(subtotal, payload.tax_type)
 
       if (payload.existing_invoice_id) {
         // Edit in-place: nomor invoice TETAP (tidak ambil seq baru), pdf_url
@@ -439,6 +440,7 @@ export const useGenerateInvoice = () => {
           taxable_base:      tax.taxableBase,
           tax_amount:        tax.taxAmount,
           grand_total:       tax.grandTotal,
+          line_items:        payload.line_items,
           notes_template_id: payload.notes_template_id,
           custom_notes:      payload.custom_notes,
         }).eq('id', payload.existing_invoice_id).select().single()
@@ -467,6 +469,7 @@ export const useGenerateInvoice = () => {
           taxable_base:      tax.taxableBase,
           tax_amount:        tax.taxAmount,
           grand_total:       tax.grandTotal,
+          line_items:        payload.line_items,
           notes_template_id: payload.notes_template_id,
           custom_notes:      payload.custom_notes,
           status:            'draft',

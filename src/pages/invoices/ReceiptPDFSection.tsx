@@ -68,6 +68,7 @@ export default function ReceiptPDFSection({ invoice, payment }: { invoice: Invoi
     client_address: client?.address ?? null,
     term_label: ctx.label,
     term_number: ctx.term_number,
+    line_items: invoice.line_items ?? null,
     subtotal: invoice.subtotal,
     tax_type: invoice.tax_type as 'none' | 'ppn11' | 'ppn12',
     taxable_base: invoice.taxable_base ?? null,

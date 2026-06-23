@@ -10,8 +10,8 @@ import {
   PageHeader, StatusBadge, Button, Input, Select, Textarea,
   EmptyState, LoadingSpinner, Amount, Modal,
 } from '@/components/shared'
-import { formatRp, formatDate, calcTax } from '@/lib/utils'
-import type { TaxType, Invoice, Payment } from '@/types/database'
+import { formatRp, formatDate, calcTax, lineItemsSubtotal, resolveLineItems } from '@/lib/utils'
+import type { TaxType, Invoice, Payment, InvoiceLineItem } from '@/types/database'
 import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal, ArrowUpDown, ArrowUp, ArrowDown, CreditCard, Paperclip, X, MoreVertical } from 'lucide-react'
 import { useCompanyStore } from '@/store/useCompanyStore'
 import { supabase } from '@/lib/supabase'
@@ -232,6 +232,7 @@ async function generateAndUploadInvoicePdf(invoice: Invoice) {
     client_address: client?.address ?? null,
     term_label: ctx.label,
     term_number: ctx.term_number,
+    line_items: invoice.line_items ?? null,
     subtotal: invoice.subtotal,
     tax_type: invoice.tax_type as 'none' | 'ppn11' | 'ppn12',
     taxable_base: invoice.taxable_base ?? null,
@@ -742,12 +743,19 @@ function GenerateInvoice() {
   const { data: editingInv } = useInvoice(editId ?? undefined)
   const term = terms?.find(t => t.id === termId)
   const qt = term?.quotation; const cli = qt?.client; const svc = qt?.service
-  const [form, setForm] = useState({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none' as TaxType, notes_template_id: '', custom_notes: '', nominal: '' })
+  const [form, setForm] = useState({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none' as TaxType, notes_template_id: '', custom_notes: '', line_items: [] as InvoiceLineItem[] })
   const [done, setDone] = useState<{ inv_number: string; grand_total: number; id: string } | null>(null)
   const [pdfErr, setPdfErr] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
-  const tax = calcTax(Number(form.nominal) || 0, form.tax_type)
+  const setLine = (i: number, k: keyof InvoiceLineItem, v: string) => setForm(f => ({
+    ...f,
+    line_items: f.line_items.map((it, idx) => idx !== i ? it : { ...it, [k]: k === 'description' ? v : (Number(v) || 0) }),
+  }))
+  const addLine = () => setForm(f => ({ ...f, line_items: [...f.line_items, { description: '', qty: 1, unit_price: 0 }] }))
+  const removeLine = (i: number) => setForm(f => ({ ...f, line_items: f.line_items.filter((_, idx) => idx !== i) }))
+  const subtotal = lineItemsSubtotal(form.line_items)
+  const tax = calcTax(subtotal, form.tax_type)
   const dueDate = (() => { const d = new Date(form.inv_date); d.setDate(d.getDate() + parseInt(form.due_days||'0')); return d })()
 
   // Prefill: saat edit isi dari invoice lama, saat create isi default + infer PPN dari notes QT.
@@ -764,14 +772,18 @@ function GenerateInvoice() {
         tax_type:          editingInv.tax_type as TaxType,
         notes_template_id: editingInv.notes_template_id ?? '',
         custom_notes:      editingInv.custom_notes ?? '',
-        nominal:           String(editingInv.subtotal ?? ''),
+        line_items:        resolveLineItems({
+          line_items: editingInv.line_items,
+          term_label: editingInv.invoice_term?.label,
+          subtotal:   editingInv.subtotal,
+        }),
       })
       setInitialized(true)
     } else {
       if (!term) return
       const qNotes = term.quotation?.notes?.toLowerCase?.() ?? ''
       const inferredTax: TaxType = qNotes.includes('tax: ppn 11%') ? 'ppn11' : 'none'
-      setForm(f => ({ ...f, tax_type: inferredTax, nominal: String(term.nominal ?? '') }))
+      setForm(f => ({ ...f, tax_type: inferredTax, line_items: [{ description: term.label, qty: 1, unit_price: term.nominal ?? 0 }] }))
       setInitialized(true)
     }
   }, [editId, editingInv, term, initialized])
@@ -791,7 +803,7 @@ function GenerateInvoice() {
       tax_type:           form.tax_type,
       notes_template_id:  form.notes_template_id || null,
       custom_notes:       form.custom_notes || null,
-      nominal:            Number(form.nominal) || 0,
+      line_items:         form.line_items,
       service_code:       svc.code,
       client_code:        cli.code,
       term_number:        term.term_number,
@@ -827,7 +839,7 @@ function GenerateInvoice() {
         <p className="text-xs text-green-600">PDF otomatis ter-download & tersimpan. Status invoice: Issued.</p>
         <div className="flex gap-3 justify-center pt-2">
           <Button onClick={() => navigate('/invoices')}><FileText size={14} /> Ke Invoice List</Button>
-          {!editId && <Button variant="outline" onClick={() => { setDone(null); setInitialized(false); setForm({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none', notes_template_id: '', custom_notes: '', nominal: '' }) }}>Buat Invoice Lain</Button>}
+          {!editId && <Button variant="outline" onClick={() => { setDone(null); setInitialized(false); setForm({ inv_date: new Date().toISOString().split('T')[0], due_days: '30', tax_type: 'none', notes_template_id: '', custom_notes: '', line_items: [] }) }}>Buat Invoice Lain</Button>}
         </div>
       </div>
     </div>
@@ -871,10 +883,65 @@ function GenerateInvoice() {
               <Input label="Tanggal Invoice *" type="date" value={form.inv_date} onChange={e => set('inv_date', e.target.value)} />
               <Input label="Jatuh Tempo (hari) *" type="number" min="1" value={form.due_days} onChange={e => set('due_days', e.target.value)} />
             </div>
-            <div>
-              <Input label="Nominal (sebelum PPN) *" type="number" min="0" value={form.nominal} onChange={e => set('nominal', e.target.value)} />
-              {term && Number(form.nominal) !== term.nominal && (
-                <p className="mt-1 text-[11px] text-amber-600">Nominal berbeda dari termin quotation ({formatRp(term.nominal)}).</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-foreground">Item Invoice <span className="text-muted-foreground font-normal">(sebelum PPN)</span> *</span>
+                <button
+                  type="button"
+                  onClick={addLine}
+                  className="text-[11px] px-2 py-1 rounded border border-rok-300 bg-rok-50 text-rok-700 hover:bg-rok-100 font-medium transition-colors"
+                >
+                  + Tambah baris
+                </button>
+              </div>
+              <div className="hidden sm:grid grid-cols-[1fr_52px_104px_104px_24px] gap-2 px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <span>Deskripsi</span>
+                <span className="text-center">Qty</span>
+                <span className="text-right">Harga Satuan</span>
+                <span className="text-right">Total</span>
+                <span />
+              </div>
+              {form.line_items.map((it, i) => (
+                <div key={i} className="grid grid-cols-[1fr_52px_104px_104px_24px] gap-2 items-center">
+                  <input
+                    className="w-full px-2.5 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-rok-400"
+                    placeholder="Deskripsi item"
+                    value={it.description}
+                    onChange={e => setLine(i, 'description', e.target.value)}
+                  />
+                  <input
+                    type="number" min="0"
+                    className="w-full px-2 py-2 text-sm text-center border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-rok-400"
+                    value={it.qty === 0 ? '' : it.qty}
+                    onChange={e => setLine(i, 'qty', e.target.value)}
+                  />
+                  <input
+                    type="number" min="0"
+                    className="w-full px-2.5 py-2 text-sm text-right border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-rok-400"
+                    placeholder="0"
+                    value={it.unit_price === 0 ? '' : it.unit_price}
+                    onChange={e => setLine(i, 'unit_price', e.target.value)}
+                  />
+                  <span className="text-xs text-right num tabular-nums text-muted-foreground">
+                    {formatRp(Math.round((it.qty || 0) * (it.unit_price || 0)))}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeLine(i)}
+                    disabled={form.line_items.length <= 1}
+                    className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors flex items-center justify-center"
+                    title="Hapus baris"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
+              <div className="flex items-center justify-between pt-1 px-1">
+                <span className="text-xs text-muted-foreground">Subtotal</span>
+                <span className="text-sm font-semibold num">{formatRp(subtotal)}</span>
+              </div>
+              {term && Math.abs(subtotal - term.nominal) >= 1 && (
+                <p className="text-[11px] text-amber-600">Subtotal berbeda dari nominal termin quotation ({formatRp(term.nominal)}).</p>
               )}
             </div>
             <Select label="Tax / PPN" value={form.tax_type} onChange={e => set('tax_type', e.target.value as TaxType)}>
