@@ -848,7 +848,7 @@ function GenerateInvoice() {
   const isRegenerate = !editId && termInvoice(term ?? {})?.status === 'void'
 
   return (
-    <div className="page max-w-3xl">
+    <div className="page">
       <PageHeader
         title={editId ? 'Edit Invoice' : isRegenerate ? 'Re-generate Invoice' : 'Generate Invoice'}
         sub={`Dari: ${qt?.qt_number} — ${term.label}`}
@@ -866,15 +866,15 @@ function GenerateInvoice() {
           <span>Invoice sudah diterbitkan (<strong>{editingInv.inv_number}</strong>). Perubahan akan regenerate PDF, <strong>nomor invoice tetap sama</strong>, dan tercatat di log audit.</span>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-5">
-        <div className="col-span-2 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-5 items-start">
+        <div className="space-y-4 min-w-0">
           <div className="rounded-lg border border-border bg-white p-4 space-y-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Info Termin</p>
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
               <div><p className="text-xs text-muted-foreground">Client</p><p className="font-medium">{cli?.name}</p></div>
               <div><p className="text-xs text-muted-foreground">QT Number</p><p className="font-mono text-xs">{qt?.qt_number}</p></div>
-              <div className="col-span-2"><p className="text-xs text-muted-foreground">Label</p><p className="font-medium">{term.label}</p></div>
               <div><p className="text-xs text-muted-foreground">Nominal</p><p className="font-semibold num">{formatRp(term.nominal)}</p></div>
+              <div className="col-span-2 lg:col-span-4"><p className="text-xs text-muted-foreground">Label</p><p className="font-medium">{term.label}</p></div>
             </div>
           </div>
           <div className="rounded-lg border border-border bg-white p-4 space-y-4">
@@ -894,7 +894,7 @@ function GenerateInvoice() {
                   + Tambah baris
                 </button>
               </div>
-              <div className="hidden sm:grid grid-cols-[1fr_52px_104px_104px_24px] gap-2 px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+              <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_72px_160px_160px_28px] gap-2 px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                 <span>Deskripsi</span>
                 <span className="text-center">Qty</span>
                 <span className="text-right">Harga Satuan</span>
@@ -902,7 +902,7 @@ function GenerateInvoice() {
                 <span />
               </div>
               {form.line_items.map((it, i) => (
-                <div key={i} className="grid grid-cols-[1fr_52px_104px_104px_24px] gap-2 items-center">
+                <div key={i} className="grid grid-cols-[minmax(0,1fr)_72px_160px_160px_28px] gap-2 items-center">
                   <input
                     className="w-full px-2.5 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-rok-400"
                     placeholder="Deskripsi item"
@@ -956,7 +956,7 @@ function GenerateInvoice() {
             <Textarea label="Custom Notes (override template)" rows={3} placeholder="Kosongkan untuk pakai template..." value={form.custom_notes} onChange={e => set('custom_notes', e.target.value)} />
           </div>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-4 lg:sticky lg:top-6">
           <div className="rounded-lg border border-border bg-white p-4 space-y-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ringkasan</p>
             <div className="space-y-2 text-xs">
