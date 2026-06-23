@@ -20,16 +20,13 @@ import { supabase } from '@/lib/supabase'
 const LazyPDFSection = lazy(() => import('./InvoicePDFSection'))
 const LazyReceiptSection = lazy(() => import('./ReceiptPDFSection'))
 
-// Normalize: invoice yang menagih termin ini. Sumber utama = junction links
-// (mencakup anchor + combined invoice). Fallback ke embed anchor lama (t.invoice)
-// untuk data sebelum junction ada. Pilih invoice aktif (status != void) dulu.
-function termInvoice(t: { invoice?: unknown; links?: { invoice: { id: string; status: string; inv_number?: string } | null }[] }): { id: string; status: string; inv_number?: string } | null {
-  const fromLinks = (t.links ?? []).map(l => l.invoice).filter(Boolean) as { id: string; status: string; inv_number?: string }[]
-  const active = fromLinks.find(i => i.status !== 'void')
-  if (active) return active
+// Supabase returns one-to-many embeds as array even with a unique constraint.
+// Normalize invoice field from InvoiceTerm to a single object or null.
+function termInvoice(t: { invoice?: unknown }): { id: string; status: string } | null {
   const inv = t.invoice
-  if (inv) return Array.isArray(inv) ? ((inv[0] as any) ?? null) : (inv as any)
-  return fromLinks[0] ?? null
+  if (!inv) return null
+  if (Array.isArray(inv)) return (inv[0] as any) ?? null
+  return inv as any
 }
 
 // ── Error Boundary ─────────────────────────────────────────────
@@ -761,28 +758,6 @@ function GenerateInvoice() {
   const tax = calcTax(subtotal, form.tax_type)
   const dueDate = (() => { const d = new Date(form.inv_date); d.setDate(d.getDate() + parseInt(form.due_days||'0')); return d })()
 
-  // ── Member termin: 1 invoice bisa menagih termin dari beberapa quotation ──
-  // anchor = termId; tambahan dipilih dari termin pending client yang sama.
-  const [memberTermIds, setMemberTermIds] = useState<string[]>([])
-  const termById = new Map<string, any>()
-  ;(terms ?? []).forEach(t => termById.set(t.id, t))
-  ;(editingInv?.member_terms ?? []).forEach(t => termById.set(t.id, t))
-  if (term) termById.set(term.id, term)
-  const memberTerms = memberTermIds.map(id => termById.get(id)).filter(Boolean)
-  const membersNominalTotal = memberTerms.reduce((s, t) => s + (t?.nominal || 0), 0)
-  // Termin lain yang bisa digabung: client sama, belum jadi member, masih pending.
-  const availableTerms = (terms ?? []).filter(t =>
-    t.quotation?.client_id === cli?.id &&
-    !memberTermIds.includes(t.id) &&
-    ['not_yet', 'need_created'].includes(t.status) &&
-    (!termInvoice(t) || termInvoice(t)?.status === 'void'),
-  )
-  const addMember = (t: any) => {
-    setMemberTermIds(ids => ids.includes(t.id) ? ids : [...ids, t.id])
-    setForm(f => ({ ...f, line_items: [...f.line_items, { description: t.label, qty: 1, unit_price: t.nominal ?? 0 }] }))
-  }
-  const removeMember = (id: string) => setMemberTermIds(ids => ids.filter(x => x !== id))
-
   // Prefill: saat edit isi dari invoice lama, saat create isi default + infer PPN dari notes QT.
   useEffect(() => {
     if (initialized) return
@@ -803,15 +778,12 @@ function GenerateInvoice() {
           subtotal:   editingInv.subtotal,
         }),
       })
-      const memberIds = (editingInv.member_terms ?? []).map(t => t.id)
-      setMemberTermIds(memberIds.length > 0 ? memberIds : [editingInv.invoice_term_id])
       setInitialized(true)
     } else {
       if (!term) return
       const qNotes = term.quotation?.notes?.toLowerCase?.() ?? ''
       const inferredTax: TaxType = qNotes.includes('tax: ppn 11%') ? 'ppn11' : 'none'
       setForm(f => ({ ...f, tax_type: inferredTax, line_items: [{ description: term.label, qty: 1, unit_price: term.nominal ?? 0 }] }))
-      setMemberTermIds([term.id])
       setInitialized(true)
     }
   }, [editId, editingInv, term, initialized])
@@ -835,7 +807,6 @@ function GenerateInvoice() {
       service_code:       svc.code,
       client_code:        cli.code,
       term_number:        term.term_number,
-      member_term_ids:    memberTermIds.length > 0 ? memberTermIds : [term.id],
       existing_invoice_id: editId ?? voidedInvoiceId,
     }) as Invoice
 
@@ -912,50 +883,6 @@ function GenerateInvoice() {
               <Input label="Tanggal Invoice *" type="date" value={form.inv_date} onChange={e => set('inv_date', e.target.value)} />
               <Input label="Jatuh Tempo (hari) *" type="number" min="1" value={form.due_days} onChange={e => set('due_days', e.target.value)} />
             </div>
-
-            {/* Termin yang ditagih — 1 invoice bisa gabung termin dari quotation lain (client sama) */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-foreground">Termin yang ditagih</span>
-                {memberTerms.length > 1 && (
-                  <span className="text-[11px] text-muted-foreground">{memberTerms.length} termin · total {formatRp(membersNominalTotal)}</span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {memberTerms.map((mt, idx) => (
-                  <span key={mt.id} className="inline-flex items-center gap-1.5 max-w-full rounded-full border border-rok-200 bg-rok-50 pl-2.5 pr-1.5 py-1 text-[11px] text-rok-800">
-                    <span className="truncate max-w-[260px]">
-                      {mt.quotation?.qt_number ? `${mt.quotation.qt_number} · ` : ''}{mt.label}
-                      <span className="text-rok-500"> — {formatRp(mt.nominal)}</span>
-                    </span>
-                    {idx === 0 ? (
-                      <span className="text-[9px] uppercase tracking-wide text-rok-400 px-1">anchor</span>
-                    ) : (
-                      <button type="button" onClick={() => removeMember(mt.id)} className="text-rok-400 hover:text-destructive transition-colors" title="Lepas termin">
-                        <X size={13} />
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </div>
-              {availableTerms.length > 0 ? (
-                <Select
-                  value=""
-                  onChange={e => { const t = availableTerms.find(x => x.id === e.target.value); if (t) addMember(t) }}
-                >
-                  <option value="">+ Tambah termin dari quotation lain...</option>
-                  {availableTerms.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.quotation?.qt_number} · {t.label} — {formatRp(t.nominal)}
-                    </option>
-                  ))}
-                </Select>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">Tidak ada termin pending lain untuk client ini.</p>
-              )}
-              <p className="text-[11px] text-muted-foreground">Saat invoice dibayar, semua termin di atas otomatis ditandai lunas.</p>
-            </div>
-
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-foreground">Item Invoice <span className="text-muted-foreground font-normal">(sebelum PPN)</span> *</span>
@@ -1013,14 +940,9 @@ function GenerateInvoice() {
                 <span className="text-xs text-muted-foreground">Subtotal</span>
                 <span className="text-sm font-semibold num">{formatRp(subtotal)}</span>
               </div>
-              {(() => {
-                const expected = memberTerms.length > 1 ? membersNominalTotal : (term?.nominal ?? 0)
-                return Math.abs(subtotal - expected) >= 1 ? (
-                  <p className="text-[11px] text-amber-600">
-                    Subtotal berbeda dari total nominal termin ({formatRp(expected)}).
-                  </p>
-                ) : null
-              })()}
+              {term && Math.abs(subtotal - term.nominal) >= 1 && (
+                <p className="text-[11px] text-amber-600">Subtotal berbeda dari nominal termin quotation ({formatRp(term.nominal)}).</p>
+              )}
             </div>
             <Select label="Tax / PPN" value={form.tax_type} onChange={e => set('tax_type', e.target.value as TaxType)}>
               <option value="none">Tanpa PPN</option>

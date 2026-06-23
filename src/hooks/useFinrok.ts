@@ -296,7 +296,7 @@ export const useInvoiceTerms = (quotationId?: string) =>
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoice_terms')
-        .select('*, invoice:invoices(*), links:invoice_term_links(invoice:invoices(id,status,inv_number))')
+        .select('*, invoice:invoices(*)')
         .eq('quotation_id', quotationId!)
         .order('term_number')
       if (error) throw error
@@ -311,7 +311,7 @@ export const useAllInvoiceTerms = (filters?: { status?: string; companyId?: stri
     queryFn: async () => {
       let q = supabase
         .from('invoice_terms')
-        .select('*, quotation:quotations!inner(*, client:clients(*), service:services(*)), invoice:invoices(*), links:invoice_term_links(invoice:invoices(id,status,inv_number))')
+        .select('*, quotation:quotations!inner(*, client:clients(*), service:services(*)), invoice:invoices(*)')
         .order('est_date', { ascending: true, nullsFirst: false })
       if (filters?.status)    q = q.eq('status', filters.status)
       if (filters?.companyId) q = q.eq('quotation.company_id', filters.companyId)
@@ -390,23 +390,12 @@ export const useInvoice = (id: string | undefined) =>
             *,
             quotation:quotations(*, client:clients(*), service:services(*))
           ),
-          notes_template:notes_templates(*),
-          member_links:invoice_term_links(
-            invoice_term:invoice_terms(
-              *,
-              quotation:quotations(*, client:clients(*), service:services(*))
-            )
-          )
+          notes_template:notes_templates(*)
         `)
         .eq('id', id!)
         .single()
       if (error) throw error
-      const inv = data as Invoice & { member_links?: { invoice_term: InvoiceTerm }[] }
-      // Flatten junction → member_terms (anchor + tambahan). Fallback ke anchor
-      // termin untuk invoice lama yang belum punya baris junction.
-      const members = (inv.member_links ?? []).map(l => l.invoice_term).filter(Boolean)
-      inv.member_terms = members.length > 0 ? members : (inv.invoice_term ? [inv.invoice_term] : [])
-      return inv as Invoice
+      return data as Invoice
     },
   })
 
@@ -424,9 +413,6 @@ export const useGenerateInvoice = () => {
       service_code: string
       client_code: string
       term_number: number
-      // Semua termin yang ditagih invoice ini (selalu termasuk anchor invoice_term_id).
-      // Untuk invoice 1 termin biasa = [invoice_term_id].
-      member_term_ids: string[]
       existing_invoice_id?: string
     }) => {
       const invDate = new Date(payload.inv_date)
@@ -435,8 +421,6 @@ export const useGenerateInvoice = () => {
 
       const subtotal = lineItemsSubtotal(payload.line_items)
       const tax = calcTax(subtotal, payload.tax_type)
-      // Dedup + pastikan anchor selalu ikut sebagai member.
-      const memberIds = Array.from(new Set([payload.invoice_term_id, ...payload.member_term_ids]))
 
       if (payload.existing_invoice_id) {
         // Edit in-place: nomor invoice TETAP (tidak ambil seq baru), pdf_url
@@ -461,24 +445,6 @@ export const useGenerateInvoice = () => {
           custom_notes:      payload.custom_notes,
         }).eq('id', payload.existing_invoice_id).select().single()
         if (error) throw error
-
-        // Reconcile member termin: tambah/hapus baris junction + sinkronkan status.
-        const { data: curLinks } = await supabase
-          .from('invoice_term_links')
-          .select('invoice_term_id')
-          .eq('invoice_id', payload.existing_invoice_id)
-        const curIds = (curLinks ?? []).map(l => l.invoice_term_id as string)
-        const added   = memberIds.filter(id => !curIds.includes(id))
-        const removed = curIds.filter(id => !memberIds.includes(id))
-        if (added.length) {
-          await supabase.from('invoice_term_links').insert(added.map(id => ({ invoice_id: payload.existing_invoice_id!, invoice_term_id: id })))
-          await supabase.from('invoice_terms').update({ status: 'waiting' }).in('id', added)
-        }
-        if (removed.length) {
-          await supabase.from('invoice_term_links').delete().eq('invoice_id', payload.existing_invoice_id).in('invoice_term_id', removed)
-          // Termin yang dilepas kembali jadi pending (bisa di-invoice ulang).
-          await supabase.from('invoice_terms').update({ status: 'need_created' }).in('id', removed)
-        }
 
         const { data: fullUpdated } = await supabase
           .from('invoices')
@@ -511,9 +477,7 @@ export const useGenerateInvoice = () => {
         if (error) throw error
 
         await supabase.from('invoice_edit_logs').insert({ invoice_id: data.id, action: 'created' })
-        // Link semua member termin ke invoice + set semua jadi 'waiting'.
-        await supabase.from('invoice_term_links').insert(memberIds.map(id => ({ invoice_id: data.id, invoice_term_id: id })))
-        await supabase.from('invoice_terms').update({ status: 'waiting' }).in('id', memberIds)
+        await supabase.from('invoice_terms').update({ status: 'waiting' }).eq('id', payload.invoice_term_id)
 
         const { data: fullNew } = await supabase
           .from('invoices')
@@ -531,19 +495,6 @@ export const useGenerateInvoice = () => {
   })
 }
 
-// Ambil semua termin yang ditagih sebuah invoice (dari junction). Fallback ke
-// anchor invoice_term_id untuk invoice lama yang belum punya baris junction.
-async function getInvoiceMemberTermIds(invoiceId: string): Promise<string[]> {
-  const { data: links } = await supabase
-    .from('invoice_term_links')
-    .select('invoice_term_id')
-    .eq('invoice_id', invoiceId)
-  const ids = (links ?? []).map(l => l.invoice_term_id as string)
-  if (ids.length > 0) return ids
-  const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', invoiceId).single()
-  return inv?.invoice_term_id ? [inv.invoice_term_id] : []
-}
-
 export const useUpdateInvoiceStatus = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -556,13 +507,13 @@ export const useUpdateInvoiceStatus = () => {
       }
       const { error } = await supabase.from('invoices').update(updates).eq('id', id)
       if (error) throw error
-      const memberIds = await getInvoiceMemberTermIds(id)
-      if (memberIds.length) {
+      const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', id).single()
+      if (inv) {
         const termStatus = status === 'issued' ? 'waiting'
         : status === 'paid'   ? 'paid'
         : status === 'void'   ? 'need_created'  // void = bisa di-generate ulang
         : 'waiting'
-        await supabase.from('invoice_terms').update({ status: termStatus }).in('id', memberIds)
+        await supabase.from('invoice_terms').update({ status: termStatus }).eq('id', inv.invoice_term_id)
       }
       await supabase.from('invoice_edit_logs').insert({ invoice_id: id, action: status === 'issued' ? 'issued' : status === 'void' ? 'voided' : 'edited' })
     },
@@ -633,9 +584,8 @@ export const useMarkPaid = () => {
       if (error) throw error
 
       await supabase.from('invoices').update({ status: 'paid' }).eq('id', payload.invoice_id)
-      // Satu payment melunasi semua member termin (final payment + termin server, dst).
-      const paidMemberIds = await getInvoiceMemberTermIds(payload.invoice_id)
-      if (paidMemberIds.length) await supabase.from('invoice_terms').update({ status: 'paid' }).in('id', paidMemberIds)
+      const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', payload.invoice_id).single()
+      if (inv) await supabase.from('invoice_terms').update({ status: 'paid' }).eq('id', inv.invoice_term_id)
 
       // Best effort: simpan Receipt PDF saat Mark Paid.
       // Jika gagal generate/upload receipt, proses mark paid tetap berhasil.

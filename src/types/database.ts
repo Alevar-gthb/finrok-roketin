@@ -81,13 +81,6 @@ export interface QuotationStatusLog {
   changed_at: string
 }
 
-// Junction: 1 invoice ⇄ banyak termin (final payment dev + termin server, dst).
-export interface InvoiceTermLink {
-  invoice_id: string
-  invoice_term_id: string
-  created_at?: string
-}
-
 // Invoice Term
 export interface InvoiceTerm {
   id: string
@@ -103,8 +96,6 @@ export interface InvoiceTerm {
   // joined
   quotation?: Quotation
   invoice?: Invoice
-  // junction embed: invoice yang menagih termin ini (anchor + combined)
-  links?: { invoice: Pick<Invoice, 'id' | 'status' | 'inv_number'> | null }[]
 }
 
 // Line item di dalam satu invoice (qty × unit_price = total baris)
@@ -138,8 +129,6 @@ export interface Invoice {
   // joined
   invoice_term?: InvoiceTerm & { quotation?: Quotation & { client?: Client; service?: Service } }
   notes_template?: NotesTemplate
-  // semua termin yang ditagih invoice ini (anchor + tambahan dari quotation lain)
-  member_terms?: InvoiceTerm[]
 }
 
 export interface InvoiceEditLog {
@@ -272,7 +261,6 @@ export interface Database {
       notes_templates:   { Row: NotesTemplate; Insert: Omit<NotesTemplate, 'id'|'created_at'|'updated_at'>; Update: Partial<NotesTemplate> }
       quotations:        { Row: Quotation;     Insert: Omit<Quotation, 'id'|'created_at'|'updated_at'>; Update: Partial<Quotation> }
       invoice_terms:     { Row: InvoiceTerm;   Insert: Omit<InvoiceTerm, 'id'|'created_at'|'updated_at'>; Update: Partial<InvoiceTerm> }
-      invoice_term_links:{ Row: InvoiceTermLink; Insert: InvoiceTermLink; Update: Partial<InvoiceTermLink> }
       invoices:          { Row: Invoice;       Insert: Omit<Invoice, 'id'|'created_at'|'updated_at'>; Update: Partial<Invoice> }
       payments:          { Row: Payment;       Insert: Omit<Payment, 'id'|'created_at'|'updated_at'>; Update: Partial<Payment> }
       projects:          { Row: Project;       Insert: Omit<Project, 'id'|'created_at'|'updated_at'>; Update: Partial<Project> }
