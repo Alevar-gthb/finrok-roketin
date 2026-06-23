@@ -510,18 +510,22 @@ function SetupTerminModal({ qt, onClose }: any) {
       <Modal open title={`Termin — ${qt.qt_number}`} onClose={onClose} width="max-w-lg">
         <p className="text-sm text-muted-foreground mb-4">Termin sudah disetup ({existingTerms.length} termin)</p>
         <div className="space-y-2">
-          {existingTerms.map(t => (
+          {existingTerms.map(t => {
+            // Invoice aktif bisa lewat anchor (t.invoice) atau combined invoice (junction links).
+            const linkedActive = (t.links ?? []).map(l => l.invoice).find(i => i && i.status !== 'void')
+            const activeInv = linkedActive ?? (t.invoice && t.invoice.status !== 'void' ? t.invoice : null)
+            return (
             <div key={t.id} className="flex items-center justify-between p-3 rounded-md border border-border bg-secondary/30">
               <div>
                 <p className="text-xs font-medium">{t.label}</p>
                 <p className="text-[11px] text-muted-foreground">Est: {formatDate(t.est_date)}</p>
-                {t.invoice && t.invoice.status !== 'void' ? (
+                {activeInv ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/invoices?invoice=${t.invoice?.id}`)}
+                    onClick={() => navigate(`/invoices?invoice=${activeInv.id}`)}
                     className="text-[11px] text-rok-600 hover:underline font-medium mt-0.5"
                   >
-                    {t.invoice.inv_number}
+                    {activeInv.inv_number}
                   </button>
                 ) : (
                   <button
@@ -538,7 +542,8 @@ function SetupTerminModal({ qt, onClose }: any) {
                 <StatusBadge status={t.status} type="term" />
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
         <div className="mt-4 flex justify-end"><Button variant="outline" onClick={onClose}>Tutup</Button></div>
       </Modal>
