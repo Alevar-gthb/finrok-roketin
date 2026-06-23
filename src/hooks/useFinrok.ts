@@ -296,7 +296,7 @@ export const useInvoiceTerms = (quotationId?: string) =>
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoice_terms')
-        .select('*, invoice:invoices(*), links:invoice_term_links(invoice:invoices(id,status,inv_number))')
+        .select('*, invoice:invoices!invoices_invoice_term_id_fkey(*), links:invoice_term_links(invoice:invoices(id,status,inv_number))')
         .eq('quotation_id', quotationId!)
         .order('term_number')
       if (error) throw error
@@ -311,7 +311,7 @@ export const useAllInvoiceTerms = (filters?: { status?: string; companyId?: stri
     queryFn: async () => {
       let q = supabase
         .from('invoice_terms')
-        .select('*, quotation:quotations!inner(*, client:clients(*), service:services(*)), invoice:invoices(*), links:invoice_term_links(invoice:invoices(id,status,inv_number))')
+        .select('*, quotation:quotations!inner(*, client:clients(*), service:services(*)), invoice:invoices!invoices_invoice_term_id_fkey(*), links:invoice_term_links(invoice:invoices(id,status,inv_number))')
         .order('est_date', { ascending: true, nullsFirst: false })
       if (filters?.status)    q = q.eq('status', filters.status)
       if (filters?.companyId) q = q.eq('quotation.company_id', filters.companyId)
@@ -362,7 +362,7 @@ export const useInvoices = (filters?: { status?: string; companyId?: string | nu
         .from('invoices')
         .select(`
           *,
-          invoice_term:invoice_terms!inner(
+          invoice_term:invoice_terms!invoices_invoice_term_id_fkey!inner(
             *,
             quotation:quotations!inner(*, client:clients(*), service:services(*))
           ),
@@ -386,7 +386,7 @@ export const useInvoice = (id: string | undefined) =>
         .from('invoices')
         .select(`
           *,
-          invoice_term:invoice_terms(
+          invoice_term:invoice_terms!invoices_invoice_term_id_fkey(
             *,
             quotation:quotations(*, client:clients(*), service:services(*))
           ),
@@ -482,7 +482,7 @@ export const useGenerateInvoice = () => {
 
         const { data: fullUpdated } = await supabase
           .from('invoices')
-          .select('*, invoice_term:invoice_terms(*, quotation:quotations(*, client:clients(*), service:services(*))), notes_template:notes_templates(*)')
+          .select('*, invoice_term:invoice_terms!invoices_invoice_term_id_fkey(*, quotation:quotations(*, client:clients(*), service:services(*))), notes_template:notes_templates(*)')
           .eq('id', payload.existing_invoice_id)
           .single()
         return (fullUpdated ?? data) as Invoice
@@ -517,7 +517,7 @@ export const useGenerateInvoice = () => {
 
         const { data: fullNew } = await supabase
           .from('invoices')
-          .select('*, invoice_term:invoice_terms(*, quotation:quotations(*, client:clients(*), service:services(*))), notes_template:notes_templates(*)')
+          .select('*, invoice_term:invoice_terms!invoices_invoice_term_id_fkey(*, quotation:quotations(*, client:clients(*), service:services(*))), notes_template:notes_templates(*)')
           .eq('id', data.id)
           .single()
         return (fullNew ?? data) as Invoice
@@ -602,7 +602,7 @@ export const usePayments = (companyId?: string | null) =>
           *,
           invoice:invoices!inner(
             inv_number, grand_total, status,
-            invoice_term:invoice_terms!inner(
+            invoice_term:invoice_terms!invoices_invoice_term_id_fkey!inner(
               label,
               quotation:quotations!inner(qt_number, company_id, client:clients(name))
             )
