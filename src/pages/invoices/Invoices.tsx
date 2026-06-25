@@ -331,8 +331,12 @@ function InvoiceList() {
     const factor = docSortDir === 'asc' ? 1 : -1
     const clientA = a.invoice_term?.quotation?.client?.name ?? ''
     const clientB = b.invoice_term?.quotation?.client?.name ?? ''
-    const labelA = a.invoice_term?.label ?? ''
-    const labelB = b.invoice_term?.label ?? ''
+    // Samakan dengan teks kolom "Termin": prefer deskripsi item, fallback label termin.
+    const terminLabel = (inv: Invoice) =>
+      (inv.line_items ?? []).map(it => it.description?.trim()).filter(Boolean).join(' · ')
+      || inv.invoice_term?.label || ''
+    const labelA = terminLabel(a)
+    const labelB = terminLabel(b)
     switch (docSortKey) {
       case 'inv_number': return factor * a.inv_number.localeCompare(b.inv_number)
       case 'client': return factor * clientA.localeCompare(clientB)
@@ -520,11 +524,17 @@ function InvoiceList() {
                     {sortedInv.map((inv, i) => {
                       const qt = inv.invoice_term?.quotation; const cli = qt?.client
                       const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-secondary/10'
+                      // Tampilkan deskripsi item invoice (yang bisa diedit user), fallback ke label termin.
+                      const lineDesc = (inv.line_items ?? [])
+                        .map(it => it.description?.trim())
+                        .filter(Boolean)
+                        .join(' · ')
+                      const terminText = lineDesc || inv.invoice_term?.label || '—'
                       return (
                         <tr key={inv.id} className={`group border-b border-border last:border-0 hover:bg-rok-50/30 ${rowBg}`}>
                           <td className="px-3 py-2.5 font-mono text-xs text-rok-700 font-medium min-w-[196px] max-w-[196px] truncate" title={inv.inv_number}>{inv.inv_number}</td>
                           <td className="px-3 py-2.5 text-xs min-w-[140px] max-w-[140px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
-                          <td className="px-3 py-2.5 text-xs w-full min-w-[280px] max-w-[420px] truncate" title={inv.invoice_term?.label ?? undefined}>{inv.invoice_term?.label ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-xs w-full min-w-[280px] max-w-[420px] truncate" title={terminText}>{terminText}</td>
                           <td className="px-3 py-2.5 text-xs whitespace-nowrap min-w-[88px]">{formatDate(inv.inv_date)}</td>
                           <td className={`px-3 py-2.5 text-xs whitespace-nowrap min-w-[88px] ${inv.status==='overdue'?'text-red-600 font-medium':''}`}>{formatDate(inv.due_date)}</td>
                           <td className="px-3 py-2.5 text-xs whitespace-nowrap min-w-[88px]">{inv.issued_at ? formatDate(inv.issued_at) : '—'}</td>
