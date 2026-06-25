@@ -915,6 +915,7 @@ function GenerateInvoice() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
               <div><p className="text-xs text-muted-foreground">Client</p><p className="font-medium">{cli?.name}</p></div>
               <div><p className="text-xs text-muted-foreground">QT Number</p><p className="font-mono text-xs">{qt?.qt_number}</p></div>
+              <div><p className="text-xs text-muted-foreground">Judul QT</p><p className="font-medium">{qt?.title ?? '—'}</p></div>
               <div><p className="text-xs text-muted-foreground">Nominal</p><p className="font-semibold num">{formatRp(term.nominal)}</p></div>
               <div className="col-span-2 lg:col-span-4"><p className="text-xs text-muted-foreground">Label</p><p className="font-medium">{term.label}</p></div>
             </div>
