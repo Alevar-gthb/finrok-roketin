@@ -297,7 +297,10 @@ function InvoiceList() {
     return !s || inv.inv_number.toLowerCase().includes(s) || (inv.invoice_term?.quotation?.client?.name ?? '').toLowerCase().includes(s)
   }) ?? []
 
-  const pendingTerms = terms?.filter(t => ['not_yet', 'need_created'].includes(t.status) && (!termInvoice(t) || termInvoice(t)?.status === 'void')) ?? []
+  // 'overdue' = termin yang est_date-nya lewat tapi invoice-nya belum pernah dibuat
+  // (di-flag oleh refresh_overdue_status). Termin ini tetap perlu di-invoice, jadi
+  // harus muncul di tab Pending — bukan hilang dari mana-mana.
+  const pendingTerms = terms?.filter(t => ['not_yet', 'need_created', 'overdue'].includes(t.status) && (!termInvoice(t) || termInvoice(t)?.status === 'void')) ?? []
   const filteredTerms = pendingTerms.filter(term => {
     const s = termSearch.toLowerCase()
     const qtNumber = term.quotation?.qt_number ?? ''
@@ -636,7 +639,7 @@ function InvoiceList() {
                           <td className="px-4 py-2.5 text-xs min-w-[170px] max-w-[170px] truncate" title={cli?.name ?? undefined}>{cli?.name ?? '—'}</td>
                           <td className="px-4 py-2.5 text-xs min-w-[220px] max-w-[220px] truncate" title={term.label}>{term.label}</td>
                           <td className="px-4 py-2.5 text-right whitespace-nowrap min-w-[140px]"><Amount value={term.nominal} className="text-xs" /></td>
-                          <td className={`px-4 py-2.5 text-xs whitespace-nowrap min-w-[120px] ${term.status==='need_created'?'text-amber-600 font-medium':'text-muted-foreground'}`}>{formatDate(term.est_date)}</td>
+                          <td className={`px-4 py-2.5 text-xs whitespace-nowrap min-w-[120px] ${term.status==='overdue'?'text-red-600 font-medium':term.status==='need_created'?'text-amber-600 font-medium':'text-muted-foreground'}`}>{formatDate(term.est_date)}</td>
                           <td className="px-4 py-2.5 whitespace-nowrap min-w-[120px]"><StatusBadge status={term.status} type="term" /></td>
                           <td className="px-4 py-2.5 sticky right-0 z-10 min-w-[140px] border-l border-border bg-white shadow-[-8px_0_12px_-6px_rgba(15,23,42,0.08)] group-hover:bg-white whitespace-nowrap">
                             <Button size="sm" onClick={() => navigate(`/invoices/generate/${term.id}`)}><FileText size={12} /> Generate</Button>
@@ -784,7 +787,7 @@ function GenerateInvoice() {
   const availableTerms = (terms ?? []).filter(t =>
     t.quotation?.client_id === cli?.id &&
     !memberTermIds.includes(t.id) &&
-    ['not_yet', 'need_created'].includes(t.status) &&
+    ['not_yet', 'need_created', 'overdue'].includes(t.status) &&
     (!termInvoice(t) || termInvoice(t)?.status === 'void'),
   )
   const addMember = (t: any) => {
