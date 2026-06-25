@@ -148,7 +148,15 @@ export const useQuotationSummaries = (companyId?: string | null) =>
       if (companyId) q = q.eq('company_id', companyId)
       const { data, error } = await q
       if (error) throw error
-      return data as QuotationSummary[]
+
+      // View belum punya kolom `notes` → ambil terpisah dari tabel quotations dan gabung by id.
+      const { data: notesRows, error: notesErr } = await supabase
+        .from('quotations')
+        .select('id, notes')
+      if (notesErr) throw notesErr
+      const notesById = new Map((notesRows ?? []).map(r => [r.id, r.notes]))
+
+      return (data as QuotationSummary[]).map(s => ({ ...s, notes: notesById.get(s.id) ?? null }))
     },
   })
 

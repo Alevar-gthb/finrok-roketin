@@ -228,6 +228,7 @@ export interface QuotationSummary {
   title: string
   nominal: number
   qt_status: QTStatus
+  notes: string | null
   client_name: string
   client_code: string
   service_code: string

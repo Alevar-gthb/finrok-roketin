@@ -12,9 +12,9 @@ import {
   PageHeader, StatusBadge, Button, Input, Select, Textarea,
   Modal, EmptyState, LoadingSpinner, Amount,
 } from '@/components/shared'
-import { formatRp, formatDate, generateClientCode } from '@/lib/utils'
+import { formatRp, formatDate, generateClientCode, parseQTNotes, composeQTNotes } from '@/lib/utils'
 import type { QuotationSummary, QTStatus } from '@/types/database'
-import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, StickyNote } from 'lucide-react'
 
 // ─── Main list ────────────────────────────────────────────────
 export default function Quotations() {
@@ -155,7 +155,10 @@ function QuotationList() {
                   </td>
                   <td className="px-4 py-3 text-xs">{qt.service_code}</td>
                   <td className="px-4 py-3 max-w-[200px]">
-                    <p className="text-xs text-foreground truncate" title={qt.title}>{qt.title}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-foreground truncate" title={qt.title}>{qt.title}</p>
+                      <NoteIndicator notes={qt.notes} />
+                    </div>
                     {qt.project_name && <p className="text-[11px] text-muted-foreground">📁 {qt.project_name}</p>}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -252,6 +255,24 @@ function QuotationList() {
         />
       )}
     </div>
+  )
+}
+
+// ─── Note Indicator ──────────────────────────────────────────
+// Ikon catatan + popover. Hanya menampilkan bagian catatan user
+// (metadata pajak Tax/Subtotal/dst disembunyikan).
+function NoteIndicator({ notes }: { notes: string | null }) {
+  const { userNote } = parseQTNotes(notes)
+  if (!userNote) return null
+  return (
+    <span className="group relative inline-flex shrink-0">
+      <StickyNote size={13} className="text-amber-500 cursor-help" />
+      <span className="pointer-events-none absolute left-1/2 bottom-full z-20 mb-1.5 hidden -translate-x-1/2 group-hover:block">
+        <span className="block max-w-[260px] whitespace-pre-wrap rounded-md bg-slate-800 px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-lg">
+          {userNote}
+        </span>
+      </span>
+    </span>
   )
 }
 
@@ -644,7 +665,7 @@ function SetupTerminModal({ qt, onClose }: any) {
 
 // ─── Edit QT Modal ───────────────────────────────────────────
 function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
-  const [form, setForm] = useState({ title: qt.title, nominal: String(qt.nominal), notes: '' })
+  const [form, setForm] = useState({ title: qt.title, nominal: String(qt.nominal), notes: parseQTNotes(qt.notes).userNote })
   const { data: existingTerms } = useInvoiceTerms(qt.id)
   const deleteTermMutation = useDeleteInvoiceTerm()
   const createTermsMutation = useCreateInvoiceTerms()
@@ -695,7 +716,9 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
 
   const handleSubmit = async () => {
     if (!form.title || !form.nominal) return
-    await onSubmit({ title: form.title, nominal: parseFloat(form.nominal), notes: form.notes || undefined })
+    // Pertahankan metadata pajak (Tax/Subtotal/dst) yang ada di notes asli.
+    const { metaLines } = parseQTNotes(qt.notes)
+    await onSubmit({ title: form.title, nominal: parseFloat(form.nominal), notes: composeQTNotes(form.notes, metaLines) ?? undefined })
     if (newTerms.length > 0 && newTerms.every(t => t.nominal && t.est_date)) {
       const existingCount = existingTerms?.length ?? 0
       const totalTerms = existingCount + newTerms.length
@@ -725,7 +748,7 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
           </div>
           <Input label="Judul *" value={form.title} onChange={e => set('title', e.target.value)} />
           <Input label="Nominal (Rp) *" type="number" value={form.nominal} onChange={e => set('nominal', e.target.value)} />
-          <Input label="Notes (opsional)" value={form.notes} onChange={e => set('notes', e.target.value)} />
+          <Textarea label="Notes (opsional)" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
         </div>
 
         {existingTerms && existingTerms.length > 0 && (

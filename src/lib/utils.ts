@@ -107,3 +107,29 @@ export const INV_DOC_STATUS_LABEL: Record<string, string> = {
 export function truncate(str: string, n: number): string {
   return str.length > n ? str.slice(0, n) + '…' : str
 }
+
+/**
+ * Kolom `notes` pada quotation menyimpan catatan user + metadata pajak
+ * (Tax:/Subtotal:/Tax Amount:/Grand Total:) yang di-append otomatis saat create.
+ * Helper ini memisahkan keduanya supaya catatan user bisa ditampilkan/diedit
+ * tanpa kehilangan metadata pajak.
+ */
+const QT_META_PREFIX = /^(Tax|Subtotal|Tax Amount|Grand Total):/
+
+export function parseQTNotes(notes: string | null | undefined): { userNote: string; metaLines: string[] } {
+  if (!notes) return { userNote: '', metaLines: [] }
+  const lines = notes.split('\n')
+  const userNote: string[] = []
+  const metaLines: string[] = []
+  for (const line of lines) {
+    if (QT_META_PREFIX.test(line.trim())) metaLines.push(line)
+    else userNote.push(line)
+  }
+  return { userNote: userNote.join('\n').trim(), metaLines }
+}
+
+/** Gabungkan kembali catatan user dengan metadata pajak (untuk disimpan). */
+export function composeQTNotes(userNote: string, metaLines: string[]): string | null {
+  const result = [userNote.trim(), ...metaLines].filter(Boolean).join('\n')
+  return result || null
+}
