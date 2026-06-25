@@ -6,7 +6,7 @@ import { useCompanyStore } from '@/store/useCompanyStore'
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import {
   useQuotationSummaries, useCreateQuotation, useUpdateQTStatus,
-  useUpdateQuotation, useDeleteInvoiceTerm, useUpsertClient,
+  useUpdateQuotation, useDeleteInvoiceTerm, useUpsertClient, useUpsertService,
   useClients, useServices, useInvoiceTerms, useCreateInvoiceTerms,
 } from '@/hooks/useFinrok'
 import {
@@ -333,6 +333,7 @@ function QtRowActions({ onEdit, onStatus, onTerms }: { onEdit: () => void; onSta
 function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: any) {
   const { selectedCompanyId } = useCompanyStore()
   const upsertClient = useUpsertClient()
+  const upsertService = useUpsertService()
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
     queryFn: getCompanies,
@@ -351,6 +352,9 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
   const [showAddClient, setShowAddClient] = useState(false)
   const [newClient, setNewClient] = useState({ name: '', code: '' })
   const [addClientErr, setAddClientErr] = useState('')
+  const [showAddService, setShowAddService] = useState(false)
+  const [newService, setNewService] = useState({ name: '', code: '' })
+  const [addServiceErr, setAddServiceErr] = useState('')
 
   // Set default company: ikuti company filter aktif, fallback ke is_default
   useEffect(() => {
@@ -364,6 +368,7 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
   const setNew = (k: string, v: string) => setNewClient(c => ({ ...c, [k]: v }))
+  const setNewSvc = (k: string, v: string) => setNewService(s => ({ ...s, [k]: v }))
 
   const selectedClient  = clients.find((c: any) => c.id === form.client_id)
   const selectedService = services.find((s: any) => s.id === form.service_id)
@@ -388,6 +393,25 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
     set('client_id', created.id)
     setShowAddClient(false)
     setNewClient({ name: '', code: '' })
+  }
+
+  const handleAddService = async () => {
+    const name = newService.name.trim()
+    const code = newService.code.trim().toUpperCase()
+    if (!name || !code) {
+      setAddServiceErr('Nama service dan kode service wajib diisi.')
+      return
+    }
+    const exists = services.some((s: any) => (s.code ?? '').toUpperCase() === code)
+    if (exists) {
+      setAddServiceErr(`Kode service "${code}" sudah dipakai.`)
+      return
+    }
+    setAddServiceErr('')
+    const created = await upsertService.mutateAsync({ name, code, is_active: true })
+    set('service_id', created.id)
+    setShowAddService(false)
+    setNewService({ name: '', code: '' })
   }
 
   const handleSubmit = () => {
@@ -435,11 +459,34 @@ function CreateQTModal({ open, onClose, clients, services, onSubmit, loading }: 
               + Tambah client baru
             </button>
           </div>
-          <Select label="Service *" value={form.service_id} onChange={e => set('service_id', e.target.value)}>
-            <option value="">Pilih service...</option>
-            {services.map((s: any) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
-          </Select>
+          <div className="space-y-1.5">
+            <Select label="Service *" value={form.service_id} onChange={e => set('service_id', e.target.value)}>
+              <option value="">Pilih service...</option>
+              {services.map((s: any) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
+            </Select>
+            <button
+              type="button"
+              onClick={() => setShowAddService(v => !v)}
+              className="text-[11px] text-rok-600 hover:underline"
+            >
+              + Tambah service baru
+            </button>
+          </div>
         </div>
+        {showAddService && (
+          <div className="rounded-md border border-rok-200 bg-rok-50/40 p-3 space-y-2">
+            <p className="text-xs font-medium text-rok-700">Tambah Service Baru</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Input label="Nama Service *" placeholder="Web Development" value={newService.name} onChange={e => setNewSvc('name', e.target.value)} />
+              <Input label="Kode Service *" placeholder="DEV" value={newService.code} onChange={e => setNewSvc('code', e.target.value.toUpperCase())} />
+            </div>
+            {addServiceErr && <p className="text-[11px] text-destructive">{addServiceErr}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowAddService(false); setAddServiceErr('') }}>Batal</Button>
+              <Button size="sm" onClick={handleAddService} loading={upsertService.isPending}>Simpan Service</Button>
+            </div>
+          </div>
+        )}
         {showAddClient && (
           <div className="rounded-md border border-rok-200 bg-rok-50/40 p-3 space-y-2">
             <p className="text-xs font-medium text-rok-700">Tambah Client Baru</p>
