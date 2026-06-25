@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getCompanies } from '@/services/companyService'
 import { useCompanyStore } from '@/store/useCompanyStore'
@@ -14,7 +15,7 @@ import {
 } from '@/components/shared'
 import { formatRp, formatDate, generateClientCode, parseQTNotes, composeQTNotes } from '@/lib/utils'
 import type { QuotationSummary, QTStatus } from '@/types/database'
-import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, StickyNote } from 'lucide-react'
+import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, StickyNote, MoreVertical, ListChecks, RefreshCw } from 'lucide-react'
 
 // ─── Main list ────────────────────────────────────────────────
 export default function Quotations() {
@@ -154,9 +155,9 @@ function QuotationList() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs">{qt.service_code}</td>
-                  <td className="px-4 py-3 max-w-[200px]">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs text-foreground truncate" title={qt.title}>{qt.title}</p>
+                  <td className="px-4 py-3 min-w-[280px] max-w-[360px]">
+                    <div className="flex items-start gap-1.5">
+                      <p className="text-xs text-foreground line-clamp-2" title={qt.title}>{qt.title}</p>
                       <NoteIndicator notes={qt.notes} />
                     </div>
                     {qt.project_name && <p className="text-[11px] text-muted-foreground">📁 {qt.project_name}</p>}
@@ -178,28 +179,11 @@ function QuotationList() {
                     <StatusBadge status={qt.qt_status} type="qt" />
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <button
-                        onClick={() => setShowEdit(qt)}
-                        className="text-[11px] text-slate-500 hover:underline font-medium px-1 flex items-center gap-0.5"
-                      >
-                        <Pencil size={10} /> Edit
-                      </button>
-                      <button
-                        onClick={() => setShowStatus(qt)}
-                        className="text-[11px] text-rok-600 hover:underline font-medium px-1"
-                      >
-                        Status
-                      </button>
-                      {qt.qt_status === 'deal' && (
-                        <button
-                          onClick={() => setShowTerms(qt)}
-                          className="text-[11px] text-green-700 hover:underline font-medium px-1"
-                        >
-                          Termin
-                        </button>
-                      )}
-                    </div>
+                    <QtRowActions
+                      onEdit={() => setShowEdit(qt)}
+                      onStatus={() => setShowStatus(qt)}
+                      onTerms={qt.qt_status === 'deal' ? () => setShowTerms(qt) : undefined}
+                    />
                   </td>
                 </tr>
               ))}
@@ -267,12 +251,81 @@ function NoteIndicator({ notes }: { notes: string | null }) {
   return (
     <span className="group relative inline-flex shrink-0">
       <StickyNote size={13} className="text-amber-500 cursor-help" />
-      <span className="pointer-events-none absolute left-1/2 bottom-full z-20 mb-1.5 hidden -translate-x-1/2 group-hover:block">
-        <span className="block max-w-[260px] whitespace-pre-wrap rounded-md bg-slate-800 px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-lg">
+      <span className="pointer-events-none absolute left-0 bottom-full z-20 mb-1.5 hidden group-hover:block">
+        <span className="block w-[320px] whitespace-pre-wrap rounded-md bg-slate-800 px-3 py-2 text-[11px] leading-snug text-white shadow-lg">
           {userNote}
         </span>
       </span>
     </span>
+  )
+}
+
+// ─── Row Actions (kebab menu, sama seperti tabel Invoices) ───
+function QtRowActions({ onEdit, onStatus, onTerms }: { onEdit: () => void; onStatus: () => void; onTerms?: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (r) setCoords({ top: r.bottom + 4, right: window.innerWidth - r.right })
+    }
+    place()
+    const onDown = (e: MouseEvent) => {
+      if (!btnRef.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onClose = () => setOpen(false)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onClose, true)
+    window.addEventListener('resize', onClose)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onClose, true)
+      window.removeEventListener('resize', onClose)
+    }
+  }, [open])
+
+  const item = (key: string, icon: ReactNode, label: string, color: string, run: () => void) => (
+    <button
+      key={key}
+      type="button"
+      onClick={() => { run(); setOpen(false) }}
+      className={`w-full px-3 py-2 flex items-center gap-2 text-left text-xs font-medium hover:bg-secondary/60 ${color}`}
+    >
+      {icon}{label}
+    </button>
+  )
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="Aksi"
+        onClick={() => setOpen(o => !o)}
+        className={`flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground ${open ? 'bg-secondary text-foreground' : ''}`}
+      >
+        <MoreVertical size={15} />
+      </button>
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: coords.top, right: coords.right, zIndex: 60 }}
+          className="min-w-[160px] overflow-hidden rounded-lg border border-border bg-white py-1 shadow-lg"
+        >
+          {item('edit', <RefreshCw size={13} />, 'Edit', 'text-amber-700', onEdit)}
+          {item('status', <Pencil size={13} />, 'Status', 'text-rok-600', onStatus)}
+          {onTerms && item('terms', <ListChecks size={13} />, 'Termin', 'text-green-700', onTerms)}
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }
 
