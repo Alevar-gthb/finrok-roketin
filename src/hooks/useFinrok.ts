@@ -304,7 +304,7 @@ export const useInvoiceTerms = (quotationId?: string) =>
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoice_terms')
-        .select('*, invoice:invoices!invoices_invoice_term_id_fkey(*), links:invoice_term_links(invoice:invoices(id,status,inv_number))')
+        .select('*, invoice:invoices!invoices_invoice_term_id_fkey(*), links:invoice_term_links(invoice:invoices(id,status,inv_number,grand_total))')
         .eq('quotation_id', quotationId!)
         .order('term_number')
       if (error) throw error

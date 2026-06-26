@@ -765,6 +765,7 @@ function SetupTerminModal({ qt, onClose }: any) {
 
 // ─── Edit QT Modal ───────────────────────────────────────────
 function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
+  const navigate = useNavigate()
   const [form, setForm] = useState({ title: qt.title, nominal: String(qt.nominal), notes: parseQTNotes(qt.notes).userNote })
   const { data: existingTerms } = useInvoiceTerms(qt.id)
   const deleteTermMutation = useDeleteInvoiceTerm()
@@ -855,11 +856,24 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
           <div className="rounded-lg border border-border bg-white p-4 space-y-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Termin yang Ada</p>
             <p className="text-[11px] text-muted-foreground">Status waiting/paid/overdue tidak bisa dihapus.</p>
-            {existingTerms.map(t => (
+            {existingTerms.map(t => {
+              // Invoice aktif bisa lewat anchor (t.invoice) atau combined invoice (junction links).
+              const linkedActive = (t.links ?? []).map(l => l.invoice).find(i => i && i.status !== 'void')
+              const activeInv = linkedActive ?? (t.invoice && t.invoice.status !== 'void' ? t.invoice : null)
+              return (
               <div key={t.id} className="flex items-center justify-between p-2.5 rounded-md border border-border bg-secondary/20">
                 <div>
                   <p className="text-xs font-medium">{t.label}</p>
                   <p className="text-[11px] text-muted-foreground">{formatRp(t.nominal)} · Est: {formatDate(t.est_date)}</p>
+                  {activeInv && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/invoices?invoice=${activeInv.id}`)}
+                      className="text-[11px] text-rok-600 hover:underline font-medium mt-0.5"
+                    >
+                      {activeInv.inv_number} · {formatRp(activeInv.grand_total ?? 0)}
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={t.status} type="term" />
@@ -871,7 +885,8 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
 

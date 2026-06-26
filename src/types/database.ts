@@ -104,7 +104,7 @@ export interface InvoiceTerm {
   quotation?: Quotation
   invoice?: Invoice
   // junction embed: invoice yang menagih termin ini (anchor + combined)
-  links?: { invoice: Pick<Invoice, 'id' | 'status' | 'inv_number'> | null }[]
+  links?: { invoice: Pick<Invoice, 'id' | 'status' | 'inv_number' | 'grand_total'> | null }[]
 }
 
 // Line item di dalam satu invoice (qty × unit_price = total baris)
