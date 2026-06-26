@@ -109,6 +109,23 @@ export function truncate(str: string, n: number): string {
 }
 
 /**
+ * Ekstrak pesan error yang terbaca dari berbagai bentuk error
+ * (Error, PostgrestError Supabase, atau objek lain) supaya UI tidak
+ * menampilkan "[object Object]".
+ */
+export function errMsg(err: unknown, fallback = 'Terjadi kesalahan.'): string {
+  if (!err) return fallback
+  if (typeof err === 'string') return err
+  if (err instanceof Error) return err.message
+  if (typeof err === 'object') {
+    const e = err as { message?: unknown; error_description?: unknown; details?: unknown }
+    const m = e.message ?? e.error_description ?? e.details
+    if (typeof m === 'string' && m) return m
+  }
+  return fallback
+}
+
+/**
  * Kolom `notes` pada quotation menyimpan catatan user + metadata pajak
  * (Tax:/Subtotal:/Tax Amount:/Grand Total:) yang di-append otomatis saat create.
  * Helper ini memisahkan keduanya supaya catatan user bisa ditampilkan/diedit

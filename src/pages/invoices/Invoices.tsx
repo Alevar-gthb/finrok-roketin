@@ -10,7 +10,7 @@ import {
   PageHeader, StatusBadge, Button, Input, Select, Textarea,
   EmptyState, LoadingSpinner, Amount, Modal,
 } from '@/components/shared'
-import { formatRp, formatDate, calcTax, lineItemsSubtotal, resolveLineItems } from '@/lib/utils'
+import { formatRp, formatDate, calcTax, lineItemsSubtotal, resolveLineItems, errMsg } from '@/lib/utils'
 import type { TaxType, Invoice, Payment, InvoiceLineItem } from '@/types/database'
 import { FileText, Eye, Download, RefreshCw, Search, CheckCircle, XCircle, SendHorizonal, ArrowUpDown, ArrowUp, ArrowDown, CreditCard, Paperclip, X, MoreVertical } from 'lucide-react'
 import { useCompanyStore } from '@/store/useCompanyStore'
@@ -867,6 +867,30 @@ function GenerateInvoice() {
   }
   if (!term) return <LoadingSpinner />
 
+  // Termin (anchor) hanya boleh punya 1 invoice — UNIQUE constraint di invoice_term_id.
+  // Kalau sudah ada invoice non-void & ini bukan mode edit, jangan biarkan INSERT (409).
+  // Arahkan user ke Edit invoice yang sudah ada.
+  const existingActiveInv = !editId ? termInvoice(term) : null
+  if (existingActiveInv && existingActiveInv.status !== 'void') return (
+    <div className="page max-w-xl">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-8 text-center space-y-4">
+        <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto">
+          <FileText size={28} className="text-amber-600" />
+        </div>
+        <div>
+          <p className="text-lg font-bold text-amber-800">Invoice untuk termin ini sudah ada</p>
+          <p className="text-sm text-amber-700 font-mono mt-1">{existingActiveInv.inv_number}</p>
+          <p className="text-sm text-amber-700 mt-1">Termin: <strong>{term.label}</strong></p>
+        </div>
+        <p className="text-xs text-amber-600">Satu termin hanya bisa punya satu invoice. Edit invoice yang ada, atau void dulu jika ingin generate ulang.</p>
+        <div className="flex gap-3 justify-center pt-2">
+          <Button onClick={() => navigate(`/invoices/generate/${term.id}?edit=${existingActiveInv.id}`)}><FileText size={14} /> Edit Invoice</Button>
+          <Button variant="outline" onClick={() => navigate('/invoices')}>Ke Invoice List</Button>
+        </div>
+      </div>
+    </div>
+  )
+
   if (done) return (
     <div className="page max-w-xl">
       <div className="rounded-xl border border-green-200 bg-green-50 p-8 text-center space-y-4">
@@ -1068,7 +1092,7 @@ function GenerateInvoice() {
           <Button className="w-full" onClick={handleGenerate} loading={generateInvoice.isPending || updateInvoicePdfUrl.isPending}>
             <FileText size={14} />{editId?'Update Invoice':'Generate Invoice'}
           </Button>
-          {generateInvoice.isError && <p className="text-xs text-destructive text-center">{String(generateInvoice.error)}</p>}
+          {generateInvoice.isError && <p className="text-xs text-destructive text-center">{errMsg(generateInvoice.error, 'Gagal generate invoice.')}</p>}
           {pdfErr && <p className="text-xs text-destructive text-center">{pdfErr}</p>}
         </div>
       </div>
