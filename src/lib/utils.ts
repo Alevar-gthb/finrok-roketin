@@ -97,7 +97,7 @@ export const QT_STATUS_LABEL: Record<string, string> = {
 }
 export const INV_STATUS_LABEL: Record<string, string> = {
   not_yet: 'Not Yet', need_created: 'Need Created',
-  waiting: 'Waiting', paid: 'Paid', overdue: 'Overdue',
+  waiting: 'Waiting', paid: 'Paid', overdue: 'Overdue', void: 'Void',
 }
 export const INV_DOC_STATUS_LABEL: Record<string, string> = {
   draft: 'Draft', issued: 'Issued', paid: 'Paid', overdue: 'Overdue', void: 'Void',

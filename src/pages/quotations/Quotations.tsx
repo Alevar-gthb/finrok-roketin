@@ -7,15 +7,15 @@ import { Routes, Route, useNavigate } from 'react-router-dom'
 import {
   useQuotationSummaries, useCreateQuotation, useUpdateQTStatus,
   useUpdateQuotation, useDeleteInvoiceTerm, useUpsertClient, useUpsertService,
-  useClients, useServices, useInvoiceTerms, useCreateInvoiceTerms,
+  useClients, useServices, useInvoiceTerms, useCreateInvoiceTerms, useVoidInvoiceTerm,
 } from '@/hooks/useFinrok'
 import {
   PageHeader, StatusBadge, Button, Input, Select, Textarea,
   Modal, EmptyState, LoadingSpinner, Amount,
 } from '@/components/shared'
-import { formatRp, formatDate, generateClientCode, parseQTNotes, composeQTNotes } from '@/lib/utils'
+import { formatRp, formatDate, generateClientCode, parseQTNotes, composeQTNotes, errMsg } from '@/lib/utils'
 import type { QuotationSummary, QTStatus } from '@/types/database'
-import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, StickyNote, MoreVertical, ListChecks, RefreshCw } from 'lucide-react'
+import { Plus, Search, FileText, ChevronDown, Check, X, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, StickyNote, MoreVertical, ListChecks, RefreshCw, Ban, RotateCcw } from 'lucide-react'
 
 // ─── Main list ────────────────────────────────────────────────
 export default function Quotations() {
@@ -770,13 +770,15 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
   const { data: existingTerms } = useInvoiceTerms(qt.id)
   const deleteTermMutation = useDeleteInvoiceTerm()
   const createTermsMutation = useCreateInvoiceTerms()
+  const voidTermMutation = useVoidInvoiceTerm()
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   const [newTerms, setNewTerms] = useState<{ label: string; nominal: string; est_date: string; mode: 'rp'|'pct'; pct: string }[]>([])
   const [showAddTerms, setShowAddTerms] = useState(false)
 
   const nominalQT = parseFloat(form.nominal) || qt.nominal
-  const existingTotal = (existingTerms ?? []).reduce((s, t) => s + t.nominal, 0)
+  // Termin void tidak ditagih → tidak dihitung di total/balance.
+  const existingTotal = (existingTerms ?? []).filter(t => t.status !== 'void').reduce((s, t) => s + t.nominal, 0)
   const newTermsTotal = newTerms.reduce((s, t) => s + (parseFloat(t.nominal) || 0), 0)
   const allTotal = existingTotal + newTermsTotal
   const selisih = nominalQT - allTotal
@@ -849,7 +851,9 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
   }
 
   const canDeleteTerm = (status: string) => ['not_yet', 'need_created'].includes(status)
-  const isSaving = loading || createTermsMutation.isPending || deleteTermMutation.isPending
+  // Void hanya untuk termin pending yang belum punya invoice aktif (lihat per-row activeInv).
+  const canVoidTerm = (status: string) => ['not_yet', 'need_created', 'overdue'].includes(status)
+  const isSaving = loading || createTermsMutation.isPending || deleteTermMutation.isPending || voidTermMutation.isPending
 
   return (
     <Modal open title={`Edit QT — ${qt.qt_number}`} onClose={onClose} width="max-w-xl">
@@ -867,7 +871,7 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
         {existingTerms && existingTerms.length > 0 && (
           <div className="rounded-lg border border-border bg-white p-4 space-y-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Termin yang Ada</p>
-            <p className="text-[11px] text-muted-foreground">Status waiting/paid/overdue tidak bisa dihapus.</p>
+            <p className="text-[11px] text-muted-foreground">Termin tanpa invoice aktif bisa di-void (batalkan tagihan) tanpa menghapus record.</p>
             {existingTerms.map(t => {
               // Invoice aktif bisa lewat anchor (t.invoice) atau combined invoice (junction links).
               const linkedActive = (t.links ?? []).map(l => l.invoice).find(i => i && i.status !== 'void')
@@ -889,11 +893,26 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={t.status} type="term" />
-                  {canDeleteTerm(t.status) && (
-                    <button onClick={async () => { if (confirm('Hapus termin ini?')) try { await deleteTermMutation.mutateAsync(t.id) } catch { alert('Gagal menghapus termin. Periksa koneksi atau hubungi admin.') } }}
-                      className="text-red-400 hover:text-red-600" disabled={deleteTermMutation.isPending}>
-                      <Trash2 size={13} />
+                  {t.status === 'void' ? (
+                    <button title="Pulihkan termin" onClick={async () => { try { await voidTermMutation.mutateAsync({ termId: t.id, void: false }) } catch (e) { alert(errMsg(e, 'Gagal memulihkan termin.')) } }}
+                      className="text-muted-foreground hover:text-rok-600" disabled={voidTermMutation.isPending}>
+                      <RotateCcw size={13} />
                     </button>
+                  ) : (
+                    <>
+                      {canVoidTerm(t.status) && !activeInv && (
+                        <button title="Void termin (batalkan tagihan)" onClick={async () => { if (confirm('Void termin ini? Tagihan dibatalkan tapi record tetap tersimpan.')) try { await voidTermMutation.mutateAsync({ termId: t.id, void: true }) } catch (e) { alert(errMsg(e, 'Gagal void termin.')) } }}
+                          className="text-amber-500 hover:text-amber-700" disabled={voidTermMutation.isPending}>
+                          <Ban size={13} />
+                        </button>
+                      )}
+                      {canDeleteTerm(t.status) && (
+                        <button title="Hapus termin" onClick={async () => { if (confirm('Hapus termin ini?')) try { await deleteTermMutation.mutateAsync(t.id) } catch (e) { alert(errMsg(e, 'Gagal menghapus termin. Periksa koneksi atau hubungi admin.')) } }}
+                          className="text-red-400 hover:text-red-600" disabled={deleteTermMutation.isPending}>
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
