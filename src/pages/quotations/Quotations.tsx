@@ -782,6 +782,18 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
   const selisih = nominalQT - allTotal
   const isBalanced = Math.abs(selisih) < 1
 
+  // Total invoice yang sudah PAID vs QT. Dedupe per invoice id supaya combined
+  // invoice (1 invoice menagih beberapa termin) tidak dihitung berkali-kali.
+  const paidInvoices = new Map<string, number>()
+  ;(existingTerms ?? []).forEach(t => {
+    const linkedActive = (t.links ?? []).map(l => l.invoice).find(i => i && i.status !== 'void')
+    const activeInv = linkedActive ?? (t.invoice && t.invoice.status !== 'void' ? t.invoice : null)
+    if (activeInv && activeInv.status === 'paid') paidInvoices.set(activeInv.id, activeInv.grand_total ?? 0)
+  })
+  const totalPaid = [...paidInvoices.values()].reduce((s, v) => s + v, 0)
+  const selisihPaid = nominalQT - totalPaid
+  const isPaidBalanced = Math.abs(selisihPaid) < 1
+
   const addNewTerm = () => {
     const remaining = nominalQT - existingTotal - newTermsTotal
     setNewTerms(prev => [...prev, {
@@ -940,10 +952,18 @@ function EditQTModal({ qt, onClose, onSubmit, loading }: any) {
           ))}
 
           {(existingTerms?.length ?? 0) + newTerms.length > 0 && (
-            <div className={`rounded-md p-2.5 text-xs flex items-center justify-between ${isBalanced ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-              <span>Total termin: <strong>{formatRp(allTotal)}</strong> / QT: <strong>{formatRp(nominalQT)}</strong></span>
-              {!isBalanced && <span>Selisih: {formatRp(Math.abs(selisih))} {selisih > 0 ? '(kurang)' : '(lebih)'}</span>}
-              {isBalanced && <span>✓ Seimbang</span>}
+            <div className="space-y-1.5">
+              <div className={`rounded-md p-2.5 text-xs flex items-center justify-between ${isBalanced ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                <span>Total termin: <strong>{formatRp(allTotal)}</strong> / QT: <strong>{formatRp(nominalQT)}</strong></span>
+                {!isBalanced && <span>Selisih: {formatRp(Math.abs(selisih))} {selisih > 0 ? '(kurang)' : '(lebih)'}</span>}
+                {isBalanced && <span>✓ Seimbang</span>}
+              </div>
+              <div className={`rounded-md p-2.5 text-xs flex items-center justify-between ${isPaidBalanced ? 'bg-green-50 text-green-700' : 'bg-secondary/50 text-muted-foreground'}`}>
+                <span>Total Invoice Paid: <strong>{formatRp(totalPaid)}</strong> / QT: <strong>{formatRp(nominalQT)}</strong></span>
+                {isPaidBalanced
+                  ? <span>✓ Lunas</span>
+                  : <span>Selisih: {formatRp(Math.abs(selisihPaid))} {selisihPaid > 0 ? '(belum lunas)' : '(lebih)'}</span>}
+              </div>
             </div>
           )}
         </div>
