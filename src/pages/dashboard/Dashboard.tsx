@@ -179,7 +179,7 @@ export default function Dashboard() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/40">
-                  {['Invoice #','QT #','Client','Grand Total','Due Date','Action'].map(h => (
+                  {['Invoice #','QT #','Judul','Client','Grand Total','Due Date','Action'].map(h => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -192,6 +192,7 @@ export default function Dashboard() {
                     <tr key={inv.id} className={`border-b border-border last:border-0 ${i%2===0?'bg-white':'bg-secondary/20'}`}>
                       <td className="px-4 py-2.5 font-mono text-xs text-rok-700 font-medium">{inv.inv_number}</td>
                       <td className="px-4 py-2.5 font-mono text-xs">{qt?.qt_number}</td>
+                      <td className="px-4 py-2.5 text-xs max-w-[220px] truncate" title={qt?.title ?? undefined}>{qt?.title ?? '—'}</td>
                       <td className="px-4 py-2.5 text-xs">{cli?.name}</td>
                       <td className="px-4 py-2.5 text-xs text-right num">{formatRp(inv.grand_total)}</td>
                       <td className="px-4 py-2.5 text-xs text-red-600 font-medium">{formatDate(inv.due_date)}</td>
