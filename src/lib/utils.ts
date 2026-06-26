@@ -97,7 +97,7 @@ export const QT_STATUS_LABEL: Record<string, string> = {
 }
 export const INV_STATUS_LABEL: Record<string, string> = {
   not_yet: 'Not Yet', need_created: 'Need Created',
-  waiting: 'Waiting', paid: 'Paid', overdue: 'Overdue',
+  waiting: 'Waiting', paid: 'Paid', overdue: 'Overdue', void: 'Void',
 }
 export const INV_DOC_STATUS_LABEL: Record<string, string> = {
   draft: 'Draft', issued: 'Issued', paid: 'Paid', overdue: 'Overdue', void: 'Void',
@@ -106,6 +106,23 @@ export const INV_DOC_STATUS_LABEL: Record<string, string> = {
 /** Truncate text */
 export function truncate(str: string, n: number): string {
   return str.length > n ? str.slice(0, n) + '…' : str
+}
+
+/**
+ * Ekstrak pesan error yang terbaca dari berbagai bentuk error
+ * (Error, PostgrestError Supabase, atau objek lain) supaya UI tidak
+ * menampilkan "[object Object]".
+ */
+export function errMsg(err: unknown, fallback = 'Terjadi kesalahan.'): string {
+  if (!err) return fallback
+  if (typeof err === 'string') return err
+  if (err instanceof Error) return err.message
+  if (typeof err === 'object') {
+    const e = err as { message?: unknown; error_description?: unknown; details?: unknown }
+    const m = e.message ?? e.error_description ?? e.details
+    if (typeof m === 'string' && m) return m
+  }
+  return fallback
 }
 
 /**

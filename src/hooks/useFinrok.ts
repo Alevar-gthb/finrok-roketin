@@ -268,6 +268,26 @@ export const useDeleteInvoiceTerm = () => {
   })
 }
 
+// Void / restore termin pending (tanpa invoice aktif). Void = batalkan tagihan
+// tapi record tetap tersimpan; restore kembalikan ke 'not_yet'.
+export const useVoidInvoiceTerm = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { termId: string; void: boolean }) => {
+      const { error } = await supabase.from('invoice_terms')
+        .update({ status: payload.void ? 'void' : 'not_yet', updated_at: new Date().toISOString() })
+        .eq('id', payload.termId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['invoice_terms'] })
+      qc.invalidateQueries({ queryKey: ['invoice_terms_all'] })
+      qc.invalidateQueries({ queryKey: ['v_quotation_summary'] })
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+    },
+  })
+}
+
 export const useUpdateQTStatus = () => {
   const qc = useQueryClient()
   return useMutation({

@@ -3,7 +3,7 @@
 // ============================================================
 
 export type QTStatus  = 'draft' | 'sent' | 'deal' | 'lost'
-export type InvTermStatus = 'not_yet' | 'need_created' | 'waiting' | 'paid' | 'overdue'
+export type InvTermStatus = 'not_yet' | 'need_created' | 'waiting' | 'paid' | 'overdue' | 'void'
 export type InvDocStatus  = 'draft' | 'issued' | 'paid' | 'overdue' | 'void'
 export type TaxType   = 'none' | 'ppn11' | 'ppn12'
 export type PayMethod = 'transfer' | 'cash' | 'giro' | 'other'
