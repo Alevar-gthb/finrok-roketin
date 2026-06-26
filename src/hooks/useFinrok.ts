@@ -285,10 +285,19 @@ export const useUpdateQTStatus = () => {
         to_status:    payload.to_status,
         notes:        payload.notes ?? null,
       })
+
+      // Quotation lost → cascade void invoice yang sudah terbuat (kecuali yang
+      // sudah Paid) dan reset termnya agar tidak menggantung di pending/need_created.
+      if (payload.to_status === 'lost') {
+        await voidInvoicesForLostQuotation(payload.id)
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['quotations'] })
       qc.invalidateQueries({ queryKey: ['v_quotation_summary'] })
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      qc.invalidateQueries({ queryKey: ['invoice_terms'] })
+      qc.invalidateQueries({ queryKey: ['invoice_terms_all'] })
       qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
@@ -550,6 +559,53 @@ async function getInvoiceMemberTermIds(invoiceId: string): Promise<string[]> {
   if (ids.length > 0) return ids
   const { data: inv } = await supabase.from('invoices').select('invoice_term_id').eq('id', invoiceId).single()
   return inv?.invoice_term_id ? [inv.invoice_term_id] : []
+}
+
+// Saat quotation jadi "lost": void semua invoice yang sudah terbuat untuk
+// termin-terminnya (kecuali yang sudah Paid), lalu reset termin non-paid ke
+// 'not_yet' supaya tidak lagi muncul sebagai need_created / waiting / overdue.
+async function voidInvoicesForLostQuotation(quotationId: string) {
+  const { data: terms } = await supabase
+    .from('invoice_terms')
+    .select('id, status')
+    .eq('quotation_id', quotationId)
+  const termIds = (terms ?? []).map(t => t.id as string)
+  if (termIds.length === 0) return
+
+  // Invoice terkait via FK langsung (anchor) maupun via junction (combined invoice).
+  const [{ data: directInv }, { data: linkRows }] = await Promise.all([
+    supabase.from('invoices').select('id, status').in('invoice_term_id', termIds),
+    supabase.from('invoice_term_links').select('invoice_id').in('invoice_term_id', termIds),
+  ])
+  const linkedIds = [...new Set((linkRows ?? []).map(l => l.invoice_id as string))]
+  let linkedInv: { id: string; status: string }[] = []
+  if (linkedIds.length) {
+    const { data } = await supabase.from('invoices').select('id, status').in('id', linkedIds)
+    linkedInv = (data ?? []) as { id: string; status: string }[]
+  }
+
+  // Gabung + dedupe, void semua yang belum paid/void.
+  const statusById = new Map<string, string>()
+  for (const inv of [...((directInv ?? []) as { id: string; status: string }[]), ...linkedInv]) {
+    statusById.set(inv.id, inv.status)
+  }
+  const toVoid = [...statusById.entries()]
+    .filter(([, st]) => st !== 'paid' && st !== 'void')
+    .map(([id]) => id)
+  if (toVoid.length) {
+    await supabase.from('invoices').update({ status: 'void' }).in('id', toVoid)
+    await supabase.from('invoice_edit_logs').insert(
+      toVoid.map(invoice_id => ({ invoice_id, action: 'voided' }))
+    )
+  }
+
+  // Reset termin non-paid agar bersih dari antrian actionable.
+  const nonPaidTermIds = (terms ?? [])
+    .filter(t => t.status !== 'paid')
+    .map(t => t.id as string)
+  if (nonPaidTermIds.length) {
+    await supabase.from('invoice_terms').update({ status: 'not_yet' }).in('id', nonPaidTermIds)
+  }
 }
 
 export const useUpdateInvoiceStatus = () => {
