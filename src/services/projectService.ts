@@ -79,10 +79,7 @@ export async function getProjects(companyId?: string | null): Promise<ProjectSum
         id, nominal, company_id,
         clients (name),
         invoice_terms (
-          nominal, status,
-          invoices (status, grand_total,
-            payments (amount)
-          )
+          nominal, status
         )
       ),
       project_salary_records (amount),
